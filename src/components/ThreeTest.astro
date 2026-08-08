@@ -1,0 +1,116 @@
+---
+
+---
+
+
+<div id="smoke-bkg" class="fixed top-0 h-full w-full z-10 "></div>
+
+<style>
+  #smoke-bkg {
+    pointer-events: none;
+    user-select: none;
+  }
+</style>
+
+ <script>
+  import * as THREE from "three";
+
+  const $bkg = document.getElementById("smoke-bkg");
+
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+
+  // Inicializar Three.js
+  // camara, escena, renderizador
+
+  //escena
+  const scene = new THREE.Scene();
+
+  // camara
+  const camera = new THREE.PerspectiveCamera(75, w / h, 0.1, 1000);
+  camera.position.z = 10;
+  scene.add(camera);
+
+  //renderizador
+  const renderer = new THREE.WebGLRenderer({ 
+  alpha: true,
+  antialias: true // Opcional, para bordes más suaves
+});
+  renderer.setSize(w, h);
+
+  //color de fondo
+  renderer.setClearColor(0x050505, 0);
+
+  $bkg?.appendChild(renderer.domElement);
+
+  // Luz ambiental: Controla la claridad general del humo
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); // Intensidad alta
+  scene.add(ambientLight);
+
+  // Luz direccional: Simula un foco que resplandece en el humo
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+  directionalLight.position.set(0, 0, 10); // Apunta directamente desde la cámara
+  scene.add(directionalLight);
+
+  const smokeParticles: THREE.Mesh[] = [];
+
+  const loader = new THREE.TextureLoader();
+  loader.crossOrigin = "";
+
+  loader.load("/img/PetalSmall.webp", (texture) => {
+    //crear un plano 300x300
+    const smokeGeo = new THREE.PlaneGeometry(100, 100);
+
+    //material
+    const smokeMaterial = new THREE.MeshLambertMaterial({
+      map: texture,
+      transparent: true,
+      color: 0xffffff, // Color base blanco
+      emissive: 0x222222, // Un ligero brillo tenue propio
+      opacity: 0.3, // Ajusta según qué tan denso lo quieras
+      depthWrite: false,
+      side: THREE.DoubleSide, // Para que se vea por ambos lados si gira
+    });
+
+    const NUM_OF_PARTICLES = 250;
+    for (let p = 0; p < NUM_OF_PARTICLES; p++) {
+      //crear malla con geometria y material
+      const particle = new THREE.Mesh(smokeGeo, smokeMaterial);
+      //posicionar aleatoriamente
+      particle.position.set(
+        Math.random() * 500 - 250, // X
+        Math.random() * 500 - 250, // Y
+        Math.random() * 1000 - 100 // Z
+      );
+
+      // Z aleatorio
+      particle.rotation.z = Math.random() * 360;
+
+      // añadir a la escena
+      scene.add(particle);
+      //añadir la particula al array
+      smokeParticles.push(particle);
+    }
+  });
+
+  function resize() {
+    h = window.innerHeight;
+    w = window.innerWidth;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    smokeParticles.forEach((p) => {
+      p.rotation.z += 0.001;
+    });
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener("resize", resize);
+</script>
