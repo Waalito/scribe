@@ -1,0 +1,118 @@
+<section
+  id="death-screen"
+  class="death-screen"
+  aria-hidden="true"
+>
+  <div class="death-content">
+    <p class="death-title">YOU DIED</p>
+    <p class="death-message">The sentence ends here.</p>
+
+    <div class="death-action">
+      <span>R</span>
+      <span>NEW RUN</span>
+    </div>
+  </div>
+</section>
+
+<style>
+  .death-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #080808;
+    color: #d8d1c4;
+
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+
+    transition:
+      opacity 300ms ease,
+      visibility 300ms ease;
+  }
+
+  .death-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+
+    text-align: center;
+  }
+
+  .death-title {
+    margin: 0;
+
+    font-size: 32px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+  }
+
+  .death-message {
+    margin: 0;
+
+    font-size: 14px;
+    opacity: 0.5;
+  }
+
+  .death-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    margin-top: 32px;
+
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    opacity: 0.6;
+  }
+
+  .death-action span:first-child {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 24px;
+    height: 24px;
+
+    border: 1px solid currentColor;
+
+    font-size: 10px;
+  }
+
+  .is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+</style>
+
+<script>
+  const deathScreen = document.getElementById("death-screen");
+
+  window.addEventListener("keydown", (event) => {
+    if (!deathScreen?.classList.contains("is-visible")) {
+      return;
+    }
+
+    if (
+      event.key.toLowerCase() !== "r" ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    deathScreen.dispatchEvent(
+      new CustomEvent("run:restart")
+    );
+  });
+</script>

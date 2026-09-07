@@ -1,0 +1,729 @@
+---
+---
+
+<section>
+  <h1>Corruption Transition System Test</h1>
+
+  <h2>Estado</h2>
+
+  <p>
+    Stage actual:
+    <strong id="current-stage">I</strong>
+  </p>
+
+  <p>
+    Stage objetivo:
+    <strong id="target-stage">I</strong>
+  </p>
+
+  <p>
+    Progress:
+    <strong id="progress">1.000</strong>
+  </p>
+
+  <p>
+    Transición:
+    <strong id="transitioning">NO</strong>
+  </p>
+
+  <hr />
+
+  <h2>Efectos actuales</h2>
+
+  <ul>
+    <li>
+      Darkness:
+      <strong id="darkness">0.000</strong>
+    </li>
+
+    <li>
+      Blur:
+      <strong id="blur">0.000</strong> px
+    </li>
+
+    <li>
+      Ambient:
+      <strong id="ambient">0.000</strong>
+    </li>
+
+    <li>
+      Breathing:
+      <strong id="breathing">0.000</strong>
+    </li>
+
+    <li>
+      Keyboard:
+      <strong id="keyboard">0.000</strong>
+    </li>
+
+    <li>
+      Random sounds:
+      <strong id="random-sounds">0.000</strong>
+    </li>
+
+    <li>
+      Glitch:
+      <strong id="glitch">0.000</strong>
+    </li>
+
+    <li>
+      Movement:
+      <strong id="movement">0.000</strong>
+    </li>
+
+    <li>
+      Candle:
+      <strong id="candle">0.000</strong>
+    </li>
+
+    <li>
+      Illusion:
+      <strong id="illusion">0.000</strong>
+    </li>
+
+    <li>
+      Sweat:
+      <strong id="sweat">0.000</strong>
+    </li>
+
+    <li>
+      Anxiety:
+      <strong id="anxiety">0.000</strong>
+    </li>
+
+    <li>
+      Heartbeat:
+      <strong id="heartbeat">0.000</strong>
+    </li>
+  </ul>
+
+  <hr />
+
+   <div class="flex flex-wrap gap-2">
+  <h2>Transiciones</h2>
+
+  <button id="stage-i">
+    I
+  </button>
+
+  <button id="stage-ii">
+    II
+  </button>
+
+  <button id="stage-iii">
+    III
+  </button>
+
+  <button id="stage-iv">
+    IV
+  </button>
+
+  <button id="stage-v">
+    V
+  </button>
+
+ </div>
+
+  <hr />
+
+  <h2>Control del tiempo</h2>
+
+  <button id="update-100">
+    Update 100 ms
+  </button>
+
+  <button id="update-250">
+    Update 250 ms
+  </button>
+
+  <button id="update-500">
+    Update 500 ms
+  </button>
+
+  <button id="update-1000">
+    Update 1000 ms
+  </button>
+
+  <button id="update-large">
+    Update 5000 ms
+  </button>
+
+  <hr />
+
+  <h2>Prueba de interrupción</h2>
+
+  <button id="interrupt">
+    II → V → III
+  </button>
+
+  <hr />
+
+  <h2>Reset</h2>
+
+  <button id="reset">
+    Reiniciar
+  </button>
+
+  <hr />
+
+  <h2>Resultado</h2>
+
+  <p>
+    <strong id="result">
+      Esperando...
+    </strong>
+  </p>
+
+  <pre id="log"></pre>
+</section>
+
+<script>
+  import {
+    CorruptionEffectsSystem,
+  } from '@/systems/corruption/CorruptionEffectsSystem';
+
+  import {
+    CorruptionTransitionSystem,
+  } from '@/systems/corruption/CorruptionTransitionSystem';
+
+  import type {
+    CorruptionEffectState,
+  } from '@/systems/corruption/CorruptionEffectsSystem';
+
+  import type { RunState } from '@/types/run';
+
+  import type {
+    DocumentContent,
+  } from '@/types/document';
+
+  /*
+   * DOCUMENTO DE PRUEBA
+   */
+
+  const documentData: DocumentContent = {
+    metadata: {
+      id: 'corruption-transition-test',
+      locale: 'es',
+      title: 'Corruption Transition Test',
+      category: 'poem',
+    },
+
+    paragraphs: [
+      {
+        lines: [
+          {
+            text: 'Test',
+          },
+        ],
+      },
+    ],
+  };
+
+  /*
+   * RUN DE PRUEBA
+   */
+
+  const run: RunState = {
+    document: documentData,
+
+    status: 'running',
+
+    currentParagraph: 0,
+    currentLine: 0,
+    characterIndex: 0,
+
+    errors: 0,
+    totalErrors: 0,
+
+    bullets: 0,
+    corruption: 0,
+    survivedCount: 0,
+
+    timeRemaining: 300,
+  };
+
+  /*
+   * SYSTEMS
+   */
+
+  const effectsSystem =
+    new CorruptionEffectsSystem();
+
+  const transitionSystem =
+    new CorruptionTransitionSystem();
+
+  /*
+   * DOM
+   */
+
+  const currentStage =
+    document.getElementById(
+      'current-stage',
+    );
+
+  const targetStage =
+    document.getElementById(
+      'target-stage',
+    );
+
+  const progress =
+    document.getElementById(
+      'progress',
+    );
+
+  const transitioning =
+    document.getElementById(
+      'transitioning',
+    );
+
+  const darkness =
+    document.getElementById(
+      'darkness',
+    );
+
+  const blur =
+    document.getElementById(
+      'blur',
+    );
+
+  const ambient =
+    document.getElementById(
+      'ambient',
+    );
+
+  const breathing =
+    document.getElementById(
+      'breathing',
+    );
+
+  const keyboard =
+    document.getElementById(
+      'keyboard',
+    );
+
+  const randomSounds =
+    document.getElementById(
+      'random-sounds',
+    );
+
+  const glitch =
+    document.getElementById(
+      'glitch',
+    );
+
+  const movement =
+    document.getElementById(
+      'movement',
+    );
+
+  const candle =
+    document.getElementById(
+      'candle',
+    );
+
+  const illusion =
+    document.getElementById(
+      'illusion',
+    );
+
+  const sweat =
+    document.getElementById(
+      'sweat',
+    );
+
+  const anxiety =
+    document.getElementById(
+      'anxiety',
+    );
+
+  const heartbeat =
+    document.getElementById(
+      'heartbeat',
+    );
+
+  const result =
+    document.getElementById(
+      'result',
+    );
+
+  const log =
+    document.getElementById(
+      'log',
+    );
+
+  /*
+   * VALIDACIÓN DOM
+   */
+
+  const elements = [
+    currentStage,
+    targetStage,
+    progress,
+    transitioning,
+    darkness,
+    blur,
+    ambient,
+    breathing,
+    keyboard,
+    randomSounds,
+    glitch,
+    movement,
+    candle,
+    illusion,
+    sweat,
+    anxiety,
+    heartbeat,
+    result,
+    log,
+  ];
+
+  if (
+    elements.some(
+      (element) =>
+        !(element instanceof HTMLElement),
+    )
+  ) {
+    throw new Error(
+      'Corruption transition test elements not found.',
+    );
+  }
+
+  /*
+   * OBTENER EFECTOS
+   */
+
+  function getEffects(
+    corruption: number,
+  ): CorruptionEffectState {
+    run.corruption = corruption;
+
+    return effectsSystem.getEffects(run);
+  }
+
+  /*
+   * ACTUALIZAR TARGET
+   */
+
+  function setCorruption(
+    corruption: number,
+  ) {
+    const target =
+      getEffects(corruption);
+
+    transitionSystem.setTarget(
+      target,
+    );
+
+    result.textContent =
+      `Target establecido: corrupción ${corruption}`;
+
+    updateUI();
+  }
+
+  /*
+   * UI
+   */
+
+  function updateUI() {
+    const state =
+      transitionSystem.getState();
+
+    const current =
+      state.current;
+
+    currentStage.textContent =
+      current.stage;
+
+    targetStage.textContent =
+      state.target.stage;
+
+    progress.textContent =
+      state.progress.toFixed(3);
+
+    transitioning.textContent =
+      state.isTransitioning
+        ? 'SÍ'
+        : 'NO';
+
+    darkness.textContent =
+      current.darkness.toFixed(3);
+
+    blur.textContent =
+      current.blur.toFixed(3);
+
+    ambient.textContent =
+      current.ambientVolume.toFixed(3);
+
+    breathing.textContent =
+      current.breathingVolume.toFixed(3);
+
+    keyboard.textContent =
+      current.keyboardIntensity.toFixed(3);
+
+    randomSounds.textContent =
+      current.randomSoundChance.toFixed(3);
+
+    glitch.textContent =
+      current.glitchIntensity.toFixed(3);
+
+    movement.textContent =
+      current.movementIntensity.toFixed(3);
+
+    candle.textContent =
+      current.candleIntensity.toFixed(3);
+
+    illusion.textContent =
+      current.illusionIntensity.toFixed(3);
+
+    sweat.textContent =
+      current.sweatIntensity.toFixed(3);
+
+    anxiety.textContent =
+      current.anxietyIntensity.toFixed(3);
+
+    heartbeat.textContent =
+      current.heartbeatIntensity.toFixed(3);
+
+    console.log(
+      '[Corruption Transition]',
+      {
+        currentStage:
+          state.current.stage,
+
+        targetStage:
+          state.target.stage,
+
+        progress:
+          state.progress,
+
+        isTransitioning:
+          state.isTransitioning,
+
+        current:
+          state.current,
+
+        target:
+          state.target,
+      },
+    );
+  }
+
+  /*
+   * UPDATE
+   */
+
+  function update(
+    milliseconds: number,
+  ) {
+    const deltaTime =
+      milliseconds / 1000;
+
+    const state =
+      transitionSystem.update(
+        deltaTime,
+      );
+
+    result.textContent =
+      `Update: ${milliseconds} ms`;
+
+    updateUI();
+
+    log.textContent =
+      JSON.stringify(
+        {
+          deltaTime,
+          progress:
+            state.progress,
+          current:
+            state.current,
+          target:
+            state.target,
+          isTransitioning:
+            state.isTransitioning,
+        },
+        null,
+        2,
+      );
+  }
+
+  /*
+   * BOTONES DE ETAPA
+   */
+
+  document
+    .getElementById('stage-i')
+    ?.addEventListener(
+      'click',
+      () => {
+        setCorruption(0);
+      },
+    );
+
+  document
+    .getElementById('stage-ii')
+    ?.addEventListener(
+      'click',
+      () => {
+        setCorruption(10);
+      },
+    );
+
+  document
+    .getElementById('stage-iii')
+    ?.addEventListener(
+      'click',
+      () => {
+        setCorruption(25);
+      },
+    );
+
+  document
+    .getElementById('stage-iv')
+    ?.addEventListener(
+      'click',
+      () => {
+        setCorruption(45);
+      },
+    );
+
+  document
+    .getElementById('stage-v')
+    ?.addEventListener(
+      'click',
+      () => {
+        setCorruption(70);
+      },
+    );
+
+  /*
+   * UPDATES
+   */
+
+  document
+    .getElementById('update-100')
+    ?.addEventListener(
+      'click',
+      () => update(100),
+    );
+
+  document
+    .getElementById('update-250')
+    ?.addEventListener(
+      'click',
+      () => update(250),
+    );
+
+  document
+    .getElementById('update-500')
+    ?.addEventListener(
+      'click',
+      () => update(500),
+    );
+
+  document
+    .getElementById('update-1000')
+    ?.addEventListener(
+      'click',
+      () => update(1000),
+    );
+
+  document
+    .getElementById('update-large')
+    ?.addEventListener(
+      'click',
+      () => update(5000),
+    );
+
+  /*
+   * INTERRUPCIÓN
+   *
+   * II → V
+   *
+   * Luego, antes de terminar,
+   * V → III.
+   */
+
+  document
+    .getElementById('interrupt')
+    ?.addEventListener(
+      'click',
+      () => {
+        /*
+         * Partimos desde II.
+         */
+
+        run.corruption = 10;
+
+        transitionSystem.initialize(
+          effectsSystem.getEffects(run),
+        );
+
+        /*
+         * II → V
+         */
+
+        run.corruption = 70;
+
+        transitionSystem.setTarget(
+          effectsSystem.getEffects(run),
+        );
+
+        /*
+         * Avanzamos 400 ms.
+         */
+
+        transitionSystem.update(0.4);
+
+        /*
+         * Ahora interrumpimos:
+         *
+         * V → III
+         */
+
+        run.corruption = 25;
+
+        transitionSystem.setTarget(
+          effectsSystem.getEffects(run),
+        );
+
+        result.textContent =
+          'Interrupción: II → V → III';
+
+        updateUI();
+      },
+    );
+
+  /*
+   * RESET
+   */
+
+  document
+    .getElementById('reset')
+    ?.addEventListener(
+      'click',
+      () => {
+        run.corruption = 0;
+
+        transitionSystem.initialize(
+          effectsSystem.getEffects(run),
+        );
+
+        result.textContent =
+          'Sistema reiniciado';
+
+        log.textContent = '';
+
+        updateUI();
+      },
+    );
+
+  /*
+   * INICIALIZACIÓN
+   */
+
+  transitionSystem.initialize(
+    effectsSystem.getEffects(run),
+  );
+
+  updateUI();
+</script>

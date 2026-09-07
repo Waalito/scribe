@@ -1,0 +1,737 @@
+---
+import type { DocumentContent } from "@/types/document";
+import DeathScreen from "@/components/ui/DeathScreen.astro";
+import CompletionScreen from "@/components/ui/CompletionScreen.astro";
+import Revolver from "@/components/ui/Revolver.astro";
+import ErrorCounter from "@/components/ui/ErrorCounter.astro";
+
+interface Props {
+  documents: DocumentContent[];
+}
+
+const { documents } = Astro.props;
+---
+
+<section id="scribe-game" class="scribe-game" tabindex="0">
+  <!-- ============================================================
+       HEADER
+       ============================================================ -->
+
+  <header class="game-header">
+    <div>
+      <span class="label">DOCUMENT</span>
+      <h1 id="document-title">—</h1>
+    </div>
+
+    <div class="game-status">
+      <p>Estado: <strong id="run-status">—</strong></p>
+      <p>Tiempo: <strong id="run-time">—</strong></p>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       MAIN
+       ============================================================ -->
+
+  <main class="game-main">
+    <!-- ==========================================================
+         DOCUMENT VIEWPORT
+         ========================================================== -->
+
+    <section
+      id="document-viewport"
+      class="document-viewport"
+      aria-label="Documento"
+    >
+      <!-- TOP FADE -->
+      <div class="document-fade document-fade-top"></div>
+
+      <!-- DOCUMENT -->
+      <div id="document-container" class="document-container"></div>
+
+      <!-- BOTTOM FADE -->
+      <div class="document-fade document-fade-bottom"></div>
+    </section>
+
+    <!-- ==========================================================
+         TYPING STATE
+         ========================================================== -->
+
+    <section class="typing-state">
+      <div>
+        <span class="label">LÍNEA ACTUAL</span>
+
+        <strong id="current-line"> — </strong>
+      </div>
+
+      <div>
+        <span class="label">CARACTERES</span>
+
+        <strong id="character-progress"> 0 / 0 </strong>
+      </div>
+    </section>
+
+    <!-- ==========================================================
+         RUN STATE
+         ========================================================== -->
+
+    <section class="run-state">
+
+      <div class="error-state">
+  <span class="label">ERRORES</span>
+  <ErrorCounter />
+  <strong id="run-errors" class="error-value">0</strong>
+</div>
+
+      <div>
+        <span class="label">ERRORES TOTALES</span>
+        <strong id="run-total-errors">0</strong>
+      </div>
+
+      <div>
+        <span class="label">BALAS</span>
+        <strong id="run-bullets">0</strong>
+        <Revolver />
+      </div>
+
+      <div>
+        <span class="label">SOBREVIVIDO</span>
+        <strong id="run-survived">0</strong>
+      </div>
+
+      <div>
+        <span class="label">CORRUPCIÓN</span>
+        <strong id="run-corruption">0</strong>
+      </div>
+
+      <div>
+        <span class="label">STAGE</span>
+        <strong id="corruption-stage">—</strong>
+      </div>
+    </section>
+
+    <!-- ==========================================================
+         LAST ACTION
+         ========================================================== -->
+
+    <section class="action-state">
+      <span class="label"> ÚLTIMA ACCIÓN </span>
+
+      <strong id="last-action"> — </strong>
+    </section>
+  </main>
+
+  <!-- ============================================================
+       MESSAGE
+       ============================================================ -->
+
+  <div id="game-message" class="game-message" aria-live="polite">
+    Presiona una tecla para comenzar.
+  </div>
+
+  <DeathScreen />
+  <CompletionScreen />
+</section>
+
+<!-- ============================================================
+     DOCUMENT DATA
+     ============================================================ -->
+
+<script
+  id="game-document-data"
+  type="application/json"
+  set:html={JSON.stringify(documents)}
+/>
+
+<!-- ============================================================
+     GAME SCRIPT
+     ============================================================ -->
+
+<script>
+  import { initializeGame } from "@/scripts/game";
+
+  initializeGame();
+</script>
+
+<style>
+  /* ============================================================
+     GAME
+     ============================================================ */
+
+  .scribe-game {
+    position: relative;
+
+    width: 100%;
+    height: 100vh;
+
+    box-sizing: border-box;
+
+    padding: 40px;
+
+    background: radial-gradient(
+      ellipse at center,
+      #11110f 0%,
+      #090909 55%,
+      #050505 100%
+    );
+
+    color: #e8e8e8;
+
+    font-family: "Courier New", Courier, monospace;
+
+    outline: none;
+
+    overflow: hidden;
+  }
+
+  /* ============================================================
+     HEADER
+     ============================================================ */
+
+  .game-header {
+    display: flex;
+
+    align-items: flex-start;
+    justify-content: space-between;
+
+    gap: 30px;
+
+    width: min(1000px, 100%);
+
+    margin: 0 auto 24px;
+  }
+
+  .game-header h1 {
+    margin: 4px 0 0;
+
+    color: #d8d0bd;
+
+    font-size: 28px;
+
+    font-weight: 500;
+
+    letter-spacing: 0.03em;
+
+    text-transform: uppercase;
+  }
+
+  .game-status {
+    text-align: right;
+
+    color: #666;
+  }
+
+  .game-status p {
+    margin: 4px 0;
+
+    font-size: 12px;
+
+    letter-spacing: 0.04em;
+  }
+
+  .game-status strong {
+    color: #b8b1a2;
+
+    font-weight: 400;
+  }
+
+  /* ============================================================
+     LABEL
+     ============================================================ */
+
+  .label {
+    display: block;
+
+    margin-bottom: 6px;
+
+    color: #555;
+
+    font-size: 10px;
+
+    font-weight: 400;
+
+    text-transform: uppercase;
+
+    letter-spacing: 0.14em;
+  }
+
+  /* ============================================================
+     MAIN
+     ============================================================ */
+
+  .game-main {
+    position: relative;
+
+    width: min(1000px, 100%);
+
+    height: calc(100vh - 170px);
+
+    margin: 0 auto;
+
+    display: flex;
+
+    flex-direction: column;
+
+    min-height: 0;
+  }
+
+  /* ============================================================
+     DOCUMENT VIEWPORT
+     ============================================================ */
+
+  .document-viewport {
+    position: relative;
+
+    /*
+     * IMPORTANTE:
+     *
+     * Ya no usamos flex: 1.
+     *
+     * El documento tiene una ventana visual
+     * de tamaño controlado.
+     */
+
+    height: 390px;
+
+    flex: 0 0 390px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    overflow: hidden;
+
+    padding: 0;
+
+    box-sizing: border-box;
+
+    background: transparent;
+
+    /*
+     * Evitamos completamente el scroll.
+     */
+
+    overflow-y: hidden;
+    overflow-x: hidden;
+  }
+
+  /* ============================================================
+     DOCUMENT
+     ============================================================ */
+
+  .document-container {
+    position: relative;
+
+    width: min(820px, calc(100% - 80px));
+
+    /*
+     * El documento ya no necesita padding vertical
+     * enorme porque la ventana controla el espacio.
+     */
+
+    padding: 42px 60px;
+
+    box-sizing: border-box;
+
+    background: linear-gradient(
+      180deg,
+      rgba(28, 26, 22, 0.96),
+      rgba(17, 16, 14, 0.97)
+    );
+
+    border: 1px solid rgba(170, 150, 110, 0.12);
+
+    box-shadow:
+      0 30px 80px rgba(0, 0, 0, 0.65),
+      inset 0 0 80px rgba(0, 0, 0, 0.18);
+
+    color: #cfc6b4;
+
+    font-family: "Courier New", Courier, monospace;
+
+    line-height: 24px;
+
+    /*
+     * Solo las líneas renderizadas físicamente
+     * ocupan espacio.
+     */
+
+    transition: transform 220ms ease;
+  }
+
+  /* ============================================================
+     SUBTLE PAPER TEXTURE
+     ============================================================ */
+
+  .document-container::before {
+    content: "";
+
+    position: absolute;
+
+    inset: 0;
+
+    pointer-events: none;
+
+    opacity: 0.035;
+
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.4) 0,
+      rgba(255, 255, 255, 0.4) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  }
+
+  /* ============================================================
+     LINE
+     ============================================================ */
+
+  :global(.document-line) {
+    position: relative;
+
+    min-height: 24px;
+
+    padding: 2px 12px;
+
+    box-sizing: border-box;
+
+    color: rgba(205, 198, 182, 0.25);
+
+    border-left: 2px solid transparent;
+
+    white-space: pre-wrap;
+
+    transition:
+      color 180ms ease,
+      opacity 180ms ease,
+      background 180ms ease,
+      border-color 180ms ease;
+  }
+
+  /* ============================================================
+     CURRENT LINE
+     ============================================================ */
+
+  :global(.document-line.is-current) {
+    background: rgba(255, 255, 255, 0.035);
+
+    border-left-color: rgba(220, 210, 185, 0.5);
+
+    color: rgba(232, 224, 207, 0.92);
+  }
+
+  /* ============================================================
+     CHARACTERS
+     ============================================================ */
+
+  :global(.document-character) {
+    opacity: 0.3;
+
+    transition:
+      color 80ms ease,
+      opacity 80ms ease,
+      background 80ms ease,
+      box-shadow 80ms ease;
+  }
+
+  :global(.document-character.is-typed) {
+    opacity: 1;
+
+    color: #d8d0bd;
+  }
+
+  /* ============================================================
+     ERROR
+     ============================================================
+
+     IMPORTANTE:
+
+     El error NO cambia el color de la letra.
+
+     Se marca mediante fondo.
+
+     Esto hace que parezca una marca física
+     sobre el documento.
+     ============================================================ */
+
+  :global(.document-character.is-error) {
+    opacity: 1;
+
+    color: #d8d0bd;
+
+    background: rgba(150, 35, 35, 0.55);
+
+    box-shadow: 0 0 12px rgba(150, 35, 35, 0.18);
+
+    border-radius: 1px;
+  }
+
+  /* ============================================================
+     PARAGRAPH BREAK
+     ============================================================
+
+     Cada cambio de párrafo debe sentirse como
+     un pequeño checkpoint narrativo.
+     ============================================================ */
+
+  :global(.document-line.is-paragraph-start) {
+    margin-top: 34px;
+  }
+
+  /*
+   * El primer párrafo no necesita ese margen.
+   */
+
+  :global(.document-line.is-first-line) {
+    margin-top: 0;
+  }
+
+  /* ============================================================ DOCUMENT FADE ============================================================ */
+  .document-fade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    pointer-events: none;
+  } /* ============================================================ TOP FADE ============================================================ */
+  .document-fade-top {
+    top: 0;
+    height: 120px;
+    background: linear-gradient(
+      to bottom,
+      #090909 0%,
+      rgba(9, 9, 9, 0.98) 12%,
+      rgba(9, 9, 9, 0.9) 28%,
+      rgba(9, 9, 9, 0.55) 58%,
+      rgba(9, 9, 9, 0) 100%
+    );
+  } /* ============================================================ BOTTOM FADE ============================================================ */
+  .document-fade-bottom {
+    bottom: 0;
+    height: 145px;
+    background: linear-gradient(
+      to top,
+      #090909 0%,
+      rgba(9, 9, 9, 0.99) 12%,
+      rgba(9, 9, 9, 0.94) 30%,
+      rgba(9, 9, 9, 0.72) 52%,
+      rgba(9, 9, 9, 0.38) 74%,
+      rgba(9, 9, 9, 0) 100%
+    );
+  }
+
+  /* ============================================================
+     TYPING STATE
+     ============================================================ */
+
+  .typing-state {
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    gap: 30px;
+
+    margin-top: 14px;
+
+    margin-bottom: 14px;
+
+    padding: 14px 18px;
+
+    background: rgba(10, 10, 10, 0.8);
+
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .typing-state strong {
+    color: #b8b1a2;
+
+    font-size: 13px;
+
+    font-weight: 400;
+  }
+
+  /* ============================================================
+     RUN STATE
+     ============================================================ */
+
+  .run-state {
+    display: grid;
+
+    grid-template-columns: repeat(6, 1fr);
+
+    gap: 8px;
+
+    margin-bottom: 12px;
+  }
+
+  .run-state > div {
+    padding: 10px 12px;
+
+    background: rgba(10, 10, 10, 0.7);
+
+    border: 1px solid rgba(255, 255, 255, 0.045);
+  }
+
+  .run-state strong {
+    color: #b8b1a2;
+
+    font-size: 16px;
+
+    font-weight: 400;
+  }
+
+  /* ============================================================
+     ACTION
+     ============================================================ */
+
+  .action-state {
+    display: flex;
+
+    align-items: center;
+
+    gap: 14px;
+
+    margin-bottom: 10px;
+
+    padding: 10px 14px;
+
+    background: rgba(10, 10, 10, 0.65);
+
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .action-state .label {
+    margin-bottom: 0;
+  }
+
+  .action-state strong {
+    color: #777;
+
+    font-size: 11px;
+
+    font-weight: 400;
+  }
+
+  /* ============================================================
+     MESSAGE
+     ============================================================ */
+
+  .game-message {
+    position: fixed;
+
+    right: 30px;
+
+    bottom: 30px;
+
+    z-index: 10;
+
+    max-width: 320px;
+
+    padding: 10px 14px;
+
+    background: rgba(8, 8, 8, 0.92);
+
+    border: 1px solid rgba(255, 255, 255, 0.08);
+
+    color: #999;
+
+    font-size: 11px;
+
+    letter-spacing: 0.04em;
+
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .error-state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.error-value {
+  display: none;
+}
+
+  /* ============================================================
+     RESPONSIVE
+     ============================================================ */
+
+  @media (max-width: 900px) {
+    .scribe-game {
+      padding: 24px;
+    }
+
+    .document-viewport {
+      height: 360px;
+
+      flex-basis: 360px;
+    }
+
+    .document-container {
+      width: calc(100% - 30px);
+
+      padding: 40px 32px;
+    }
+
+    .run-state {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .scribe-game {
+      padding: 16px;
+    }
+
+    .game-header {
+      margin-bottom: 12px;
+    }
+
+    .game-header h1 {
+      font-size: 20px;
+    }
+
+    .game-status {
+      font-size: 10px;
+    }
+
+    .document-viewport {
+      height: 320px;
+
+      flex-basis: 320px;
+    }
+
+    .document-container {
+      width: calc(100% - 12px);
+
+      padding: 32px 20px;
+    }
+
+    .typing-state {
+      gap: 12px;
+
+      padding: 10px 12px;
+    }
+
+    .run-state {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .game-message {
+      right: 16px;
+
+      bottom: 16px;
+
+      left: 16px;
+
+      max-width: none;
+    }
+  }
+</style>

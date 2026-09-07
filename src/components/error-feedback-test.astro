@@ -1,0 +1,339 @@
+---
+---
+
+<section>
+  <h1>Error Feedback System Test</h1>
+
+  <h2>Estado</h2>
+
+  <p>
+    Activo:
+    <strong id="active">NO</strong>
+  </p>
+
+  <p>
+    Progress:
+    <strong id="progress">0.000</strong>
+  </p>
+
+  <p>
+    Rollback:
+    <strong id="rollback">0.000</strong>
+  </p>
+
+  <p>
+    Shake:
+    <strong id="shake">0.000</strong>
+  </p>
+
+  <p>
+    Audio:
+    <strong id="audio">0.000</strong>
+  </p>
+
+  <p>
+    Respiración:
+    <strong id="breathing">0.000</strong>
+  </p>
+
+  <hr />
+
+  <h2>Rollback</h2>
+
+  <p>
+    Línea:
+    <strong id="line">Hola mundo</strong>
+  </p>
+
+  <p>
+    Carácter visible:
+    <strong id="visible-character">Hola mundo</strong>
+  </p>
+
+  <hr />
+
+  <h2>Pruebas</h2>
+
+  <button id="trigger">
+    Provocar error
+  </button>
+
+  <button id="update-16">
+    Update 16ms
+  </button>
+
+  <button id="update-50">
+    Update 50ms
+  </button>
+
+  <button id="update-100">
+    Update 100ms
+  </button>
+
+  <button id="update-250">
+    Update 250ms
+  </button>
+
+  <button id="reset">
+    Reiniciar
+  </button>
+
+  <hr />
+
+  <h2>Tiempo</h2>
+
+  <p>
+    Tiempo transcurrido:
+    <strong id="elapsed">0</strong> ms
+  </p>
+
+  <p>
+    Duración esperada:
+    <strong>250</strong> ms
+  </p>
+</section>
+
+<script>
+  import {
+    ErrorFeedbackSystem,
+  } from '@/systems/feedback/ErrorFeedbackSystem';
+
+  const feedbackSystem =
+    new ErrorFeedbackSystem();
+
+  const TEST_LINE = 'Hola mundo';
+
+  const active =
+    document.getElementById('active');
+
+  const progress =
+    document.getElementById('progress');
+
+  const rollback =
+    document.getElementById('rollback');
+
+  const shake =
+    document.getElementById('shake');
+
+  const audio =
+    document.getElementById('audio');
+
+  const breathing =
+    document.getElementById('breathing');
+
+  const line =
+    document.getElementById('line');
+
+  const visibleCharacter =
+    document.getElementById(
+      'visible-character',
+    );
+
+  const elapsed =
+    document.getElementById('elapsed');
+
+  const triggerButton =
+    document.getElementById('trigger');
+
+  const update16Button =
+    document.getElementById('update-16');
+
+  const update50Button =
+    document.getElementById('update-50');
+
+  const update100Button =
+    document.getElementById('update-100');
+
+  const update250Button =
+    document.getElementById('update-250');
+
+  const resetButton =
+    document.getElementById('reset');
+
+  if (
+    !(active instanceof HTMLElement) ||
+    !(progress instanceof HTMLElement) ||
+    !(rollback instanceof HTMLElement) ||
+    !(shake instanceof HTMLElement) ||
+    !(audio instanceof HTMLElement) ||
+    !(breathing instanceof HTMLElement) ||
+    !(line instanceof HTMLElement) ||
+    !(visibleCharacter instanceof HTMLElement) ||
+    !(elapsed instanceof HTMLElement) ||
+    !(triggerButton instanceof HTMLButtonElement) ||
+    !(update16Button instanceof HTMLButtonElement) ||
+    !(update50Button instanceof HTMLButtonElement) ||
+    !(update100Button instanceof HTMLButtonElement) ||
+    !(update250Button instanceof HTMLButtonElement) ||
+    !(resetButton instanceof HTMLButtonElement)
+  ) {
+    throw new Error(
+      'Error feedback test elements not found',
+    );
+  }
+
+  let elapsedMilliseconds = 0;
+
+  function updateUI() {
+    const state =
+      feedbackSystem.getState();
+
+    active.textContent =
+      state.isActive
+        ? 'SÍ'
+        : 'NO';
+
+    progress.textContent =
+      state.progress.toFixed(3);
+
+    rollback.textContent =
+      state.rollbackProgress.toFixed(3);
+
+    shake.textContent =
+      state.shakeIntensity.toFixed(3);
+
+    audio.textContent =
+      state.audioIntensity.toFixed(3);
+
+    breathing.textContent =
+      state.breathingBoost.toFixed(3);
+
+    /*
+     * Convertimos rollbackProgress
+     * en caracteres visibles.
+     *
+     * 0 → línea completa
+     * 1 → inicio de línea
+     */
+    const rollbackAmount =
+      Math.floor(
+        state.rollbackProgress *
+          TEST_LINE.length,
+      );
+
+    const visibleLength =
+      Math.max(
+        0,
+        TEST_LINE.length -
+          rollbackAmount,
+      );
+
+    visibleCharacter.textContent =
+      TEST_LINE.slice(
+        0,
+        visibleLength,
+      );
+
+    elapsed.textContent =
+      String(elapsedMilliseconds);
+
+    console.log(
+      '[Error Feedback]',
+      state,
+    );
+  }
+
+  function triggerError() {
+    feedbackSystem.trigger({
+      lineLength:
+        TEST_LINE.length,
+    });
+
+    elapsedMilliseconds = 0;
+
+    updateUI();
+  }
+
+  function update(
+    milliseconds: number,
+  ) {
+    feedbackSystem.update(
+      milliseconds / 1000,
+    );
+
+    elapsedMilliseconds +=
+      milliseconds;
+
+    /*
+     * El sistema termina exactamente
+     * después de 250ms.
+     *
+     * Limitamos solamente la representación
+     * del test para no mostrar valores
+     * superiores a la duración real.
+     */
+    elapsedMilliseconds =
+      Math.min(
+        elapsedMilliseconds,
+        250,
+      );
+
+    updateUI();
+  }
+
+  /*
+   * ERROR
+   */
+  triggerButton.addEventListener(
+    'click',
+    () => {
+      triggerError();
+    },
+  );
+
+  /*
+   * 16ms
+   */
+  update16Button.addEventListener(
+    'click',
+    () => {
+      update(16);
+    },
+  );
+
+  /*
+   * 50ms
+   */
+  update50Button.addEventListener(
+    'click',
+    () => {
+      update(50);
+    },
+  );
+
+  /*
+   * 100ms
+   */
+  update100Button.addEventListener(
+    'click',
+    () => {
+      update(100);
+    },
+  );
+
+  /*
+   * 250ms
+   */
+  update250Button.addEventListener(
+    'click',
+    () => {
+      update(250);
+    },
+  );
+
+  /*
+   * RESET
+   */
+  resetButton.addEventListener(
+    'click',
+    () => {
+      feedbackSystem.reset();
+
+      elapsedMilliseconds = 0;
+
+      updateUI();
+    },
+  );
+
+  updateUI();
+</script>

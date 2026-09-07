@@ -1,0 +1,32 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Game from '@/components/game/Game.astro';
+
+import { DocumentLoader } from '@/systems/document/DocumentLoader';
+
+const documentLoader =
+  new DocumentLoader();
+
+const documentFiles =
+  import.meta.glob(
+    '../documents/es/**/*.md',
+    {
+      eager: true,
+      query: '?raw',
+      import: 'default',
+    },
+  );
+
+const documents = Object.values(
+  documentFiles,
+).map(
+  (markdown) =>
+    documentLoader.load(
+      markdown as string,
+    ),
+);
+---
+
+<Layout>
+  <Game documents={documents} />
+</Layout>

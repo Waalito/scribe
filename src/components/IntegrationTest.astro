@@ -1,0 +1,1835 @@
+---
+import '@/styles/global.css';
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+
+    <title>Chronos — RunCoordinator Test</title>
+
+    <style>
+      :global(body) {
+        margin: 0;
+        min-height: 100vh;
+        background: #080808;
+        color: #e8e8e8;
+        font-family:
+          monospace,
+          system-ui,
+          sans-serif;
+      }
+
+      .test-page {
+        width: min(1400px, 94%);
+        margin: 0 auto;
+        padding: 32px 0 80px;
+      }
+
+      .header {
+        margin-bottom: 30px;
+      }
+
+      .header h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+
+      .header p {
+        margin: 0;
+        color: #777;
+      }
+
+      .section {
+        margin-bottom: 20px;
+        padding: 20px;
+        border: 1px solid #292929;
+        background: #0e0e0e;
+      }
+
+      .section h2 {
+        margin: 0 0 18px;
+        font-size: 16px;
+        color: #ddd;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns:
+          repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+      }
+
+      .card {
+        padding: 12px;
+        border: 1px solid #242424;
+        background: #090909;
+      }
+
+      .label {
+        display: block;
+        margin-bottom: 6px;
+        color: #666;
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      .value {
+        font-size: 18px;
+        font-weight: bold;
+      }
+
+      .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      button {
+        border: 1px solid #444;
+        background: #171717;
+        color: #eee;
+        padding: 10px 14px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #222;
+        border-color: #666;
+      }
+
+      button:active {
+        background: #111;
+      }
+
+      .status {
+        padding: 12px;
+        border: 1px solid #292929;
+        background: #0a0a0a;
+        margin-bottom: 15px;
+      }
+
+      .status strong {
+        color: #aaa;
+      }
+
+      .log {
+        height: 280px;
+        overflow-y: auto;
+        padding: 12px;
+        border: 1px solid #222;
+        background: #050505;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .log-entry {
+        padding: 3px 0;
+        border-bottom: 1px solid #151515;
+      }
+
+      .log-entry.success {
+        color: #8fcf8f;
+      }
+
+      .log-entry.warning {
+        color: #d7c477;
+      }
+
+      .log-entry.error {
+        color: #d87878;
+      }
+
+      .log-entry.info {
+        color: #aaa;
+      }
+
+      .progress-container {
+        height: 8px;
+        margin-top: 8px;
+        background: #1a1a1a;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        width: 0%;
+        height: 100%;
+        background: #aaa;
+        transition: width 50ms linear;
+      }
+
+      .test-result {
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid #292929;
+        background: #0a0a0a;
+      }
+
+      .pass {
+        color: #8fcf8f;
+      }
+
+      .fail {
+        color: #d87878;
+      }
+
+      .neutral {
+        color: #aaa;
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="test-page">
+      <header class="header">
+        <h1>RunCoordinator Integration Test</h1>
+
+        <p>
+          Corruption → Transition → Error Feedback →
+          Weapon → Checkpoint → Game Loop
+        </p>
+      </header>
+
+      <!-- ===================================================== -->
+      <!-- RUN -->
+      <!-- ===================================================== -->
+
+      <section class="section">
+        <h2>Run State</h2>
+
+        <div class="grid">
+          <div class="card">
+            <span class="label">Status</span>
+            <span
+              id="run-status"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Errors</span>
+            <span
+              id="run-errors"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Paragraph</span>
+            <span
+              id="run-paragraph"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Line</span>
+            <span
+              id="run-line"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Bullets</span>
+            <span
+              id="run-bullets"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================== -->
+      <!-- CORRUPTION -->
+      <!-- ===================================================== -->
+
+      <section class="section">
+        <h2>Corruption Transition</h2>
+
+        <div class="grid">
+          <div class="card">
+            <span class="label">Stage</span>
+            <span
+              id="corruption-stage"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Transitioning</span>
+            <span
+              id="transition-active"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Progress</span>
+            <span
+              id="transition-progress"
+              class="value"
+            >
+              —
+            </span>
+
+            <div class="progress-container">
+              <div
+                id="transition-bar"
+                class="progress-bar"
+              ></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <span class="label">Darkness</span>
+            <span
+              id="effect-darkness"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Blur</span>
+            <span
+              id="effect-blur"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Ambient</span>
+            <span
+              id="effect-ambient"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Breathing</span>
+            <span
+              id="effect-breathing"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================== -->
+      <!-- ERROR FEEDBACK -->
+      <!-- ===================================================== -->
+
+      <section class="section">
+        <h2>Error Feedback — 250ms</h2>
+
+        <div class="grid">
+          <div class="card">
+            <span class="label">Active</span>
+            <span
+              id="error-active"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Progress</span>
+            <span
+              id="error-progress"
+              class="value"
+            >
+              —
+            </span>
+
+            <div class="progress-container">
+              <div
+                id="error-bar"
+                class="progress-bar"
+              ></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <span class="label">Rollback</span>
+            <span
+              id="rollback-progress"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Shake</span>
+            <span
+              id="error-shake"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Audio</span>
+            <span
+              id="error-audio"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Breathing Boost</span>
+            <span
+              id="error-breathing"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================== -->
+      <!-- CHECKPOINT -->
+      <!-- ===================================================== -->
+
+      <section class="section">
+        <h2>Checkpoint Feedback — 1000ms + 3000ms</h2>
+
+        <div class="grid">
+          <div class="card">
+            <span class="label">Active</span>
+            <span
+              id="checkpoint-active"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Phase</span>
+            <span
+              id="checkpoint-phase"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Progress</span>
+            <span
+              id="checkpoint-progress"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Feedback Progress</span>
+            <span
+              id="checkpoint-feedback-progress"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Break Progress</span>
+            <span
+              id="checkpoint-break-progress"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Error Fade</span>
+            <span
+              id="checkpoint-error-fade"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Bullet Fade</span>
+            <span
+              id="checkpoint-bullet-fade"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Audio</span>
+            <span
+              id="checkpoint-audio"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Input Allowed</span>
+            <span
+              id="checkpoint-input"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================== -->
+      <!-- GAME LOOP -->
+      <!-- ===================================================== -->
+
+      <section class="section">
+        <h2>Game Loop</h2>
+
+        <div class="grid">
+          <div class="card">
+            <span class="label">Last deltaTime</span>
+            <span
+              id="delta-time"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">FPS aproximado</span>
+            <span
+              id="fps"
+              class="value"
+            >
+              —
+            </span>
+          </div>
+
+          <div class="card">
+            <span class="label">Frames</span>
+            <span
+              id="frames"
+              class="value"
+            >
+              0
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================== -->
+      <!-- TEST CONTROLS -->
+      <!-- ===================================================== -->
+
+      <section class="section">
+        <h2>Tests</h2>
+
+        <div class="buttons">
+          <button id="test-error">
+            1. Error Feedback
+          </button>
+
+          <button id="test-three-errors">
+            2. Three Errors → Weapon
+          </button>
+
+          <button id="test-transition">
+            3. Corruption Transition
+          </button>
+
+          <button id="test-checkpoint">
+            4. Complete Paragraph → Checkpoint
+          </button>
+
+          <button id="test-checkpoint-input">
+            5. Checkpoint + Input Lock
+          </button>
+
+          <button id="test-interruption">
+            6. Transition Interruption
+          </button>
+
+          <button id="new-run">
+            Reset Test Run
+          </button>
+        </div>
+
+        <div
+          id="test-result"
+          class="test-result neutral"
+        >
+          Esperando prueba...
+        </div>
+      </section>
+
+      <!-- ===================================================== -->
+      <!-- LOG -->
+      <!-- ===================================================== -->
+
+      <section class="section">
+        <h2>Event Log</h2>
+
+        <div
+          id="log"
+          class="log"
+        ></div>
+      </section>
+    </main>
+
+    <script>
+      import { RunCoordinator } from '@/systems/run/RunCoordinator';
+
+      /*
+       * ==========================================================
+       * TEST DOCUMENT
+       * ==========================================================
+       *
+       * El primer párrafo tiene dos líneas.
+       *
+       * Eso nos permite comprobar:
+       *
+       * línea 0
+       * ↓
+       * línea 1
+       * ↓
+       * paragraph-complete
+       * ↓
+       * checkpoint
+       */
+
+      const testDocument = {
+        metadata: {
+          id: 'run-coordinator-test',
+          locale: 'es',
+          title: 'Run Coordinator Test',
+          category: 'tale',
+          tags: ['test'],
+        },
+
+        paragraphs: [
+          {
+            lines: [
+              {
+                text: 'Primera línea de prueba.',
+              },
+              {
+                text: 'Segunda línea del primer párrafo.',
+              },
+            ],
+          },
+
+          {
+            lines: [
+              {
+                text: 'Primera línea del segundo párrafo.',
+              },
+            ],
+          },
+        ],
+      };
+
+      /*
+       * ==========================================================
+       * FACTORY
+       * ==========================================================
+       */
+
+      let coordinator = new RunCoordinator(300);
+
+      let run = coordinator.createRun(
+        testDocument,
+      );
+
+      /*
+       * ==========================================================
+       * DOM
+       * ==========================================================
+       */
+
+      const $ = (id) =>
+        document.getElementById(id);
+
+      /*
+       * ==========================================================
+       * LOG
+       * ==========================================================
+       */
+
+      function log(
+        message,
+        type = 'info',
+      ) {
+        const container = $('log');
+
+        if (!container) {
+          return;
+        }
+
+        const entry =
+          document.createElement('div');
+
+        entry.className =
+          `log-entry ${type}`;
+
+        const time =
+          new Date().toLocaleTimeString();
+
+        entry.textContent =
+          `[${time}] ${message}`;
+
+        container.prepend(entry);
+      }
+
+      /*
+       * ==========================================================
+       * RESULT
+       * ==========================================================
+       */
+
+      function result(
+        message,
+        type = 'neutral',
+      ) {
+        const element =
+          $('test-result');
+
+        if (!element) {
+          return;
+        }
+
+        element.className =
+          `test-result ${type}`;
+
+        element.textContent =
+          message;
+      }
+
+      /*
+       * ==========================================================
+       * FORMAT
+       * ==========================================================
+       */
+
+      function format(
+        value,
+      ) {
+        return Number(value)
+          .toFixed(3);
+      }
+
+      /*
+       * ==========================================================
+       * UI
+       * ==========================================================
+       */
+
+      function updateUI() {
+        const transition =
+          coordinator
+            .getCorruptionTransitionState();
+
+        const error =
+          coordinator
+            .getErrorFeedbackState();
+
+        const checkpoint =
+          coordinator
+            .getCheckpointFeedbackState();
+
+        const effects =
+          coordinator
+            .getCorruptionEffects(run);
+
+        const stage =
+          coordinator
+            .getCorruptionStage(run);
+
+        /*
+         * Run
+         */
+
+        $('run-status').textContent =
+          String(run.status);
+
+        $('run-errors').textContent =
+          String(run.errors);
+
+        $('run-paragraph').textContent =
+          String(run.currentParagraph);
+
+        $('run-line').textContent =
+          String(run.currentLine);
+
+        /*
+         * Weapon
+         *
+         * Se accede defensivamente porque
+         * la estructura concreta de RunState
+         * puede cambiar.
+         */
+
+        $('run-bullets').textContent =
+          String(
+            run.bullets ??
+            run.weapon?.bullets ??
+            0,
+          );
+
+        /*
+         * Corruption
+         */
+
+        $('corruption-stage')
+          .textContent =
+          String(stage);
+
+        $('transition-active')
+          .textContent =
+          transition.isTransitioning
+            ? 'YES'
+            : 'NO';
+
+        $('transition-progress')
+          .textContent =
+          format(
+            transition.progress,
+          );
+
+        $('transition-bar')
+          .style.width =
+          `${transition.progress * 100}%`;
+
+        $('effect-darkness')
+          .textContent =
+          format(
+            effects.darkness,
+          );
+
+        $('effect-blur')
+          .textContent =
+          format(
+            effects.blur,
+          );
+
+        $('effect-ambient')
+          .textContent =
+          format(
+            effects.ambientVolume,
+          );
+
+        $('effect-breathing')
+          .textContent =
+          format(
+            effects.breathingVolume,
+          );
+
+        /*
+         * Error Feedback
+         */
+
+        $('error-active')
+          .textContent =
+          error.isActive
+            ? 'YES'
+            : 'NO';
+
+        $('error-progress')
+          .textContent =
+          format(
+            error.progress,
+          );
+
+        $('error-bar')
+          .style.width =
+          `${error.progress * 100}%`;
+
+        $('rollback-progress')
+          .textContent =
+          format(
+            error.rollbackProgress,
+          );
+
+        $('error-shake')
+          .textContent =
+          format(
+            error.shakeIntensity,
+          );
+
+        $('error-audio')
+          .textContent =
+          format(
+            error.audioIntensity,
+          );
+
+        $('error-breathing')
+          .textContent =
+          format(
+            error.breathingBoost,
+          );
+
+        /*
+         * Checkpoint
+         */
+
+        $('checkpoint-active')
+          .textContent =
+          checkpoint.isActive
+            ? 'YES'
+            : 'NO';
+
+        $('checkpoint-phase')
+          .textContent =
+          checkpoint.phase;
+
+        $('checkpoint-progress')
+          .textContent =
+          format(
+            checkpoint.progress,
+          );
+
+        $('checkpoint-feedback-progress')
+          .textContent =
+          format(
+            checkpoint.feedbackProgress,
+          );
+
+        $('checkpoint-break-progress')
+          .textContent =
+          format(
+            checkpoint.breakProgress,
+          );
+
+        $('checkpoint-error-fade')
+          .textContent =
+          format(
+            checkpoint.errorFade,
+          );
+
+        $('checkpoint-bullet-fade')
+          .textContent =
+          format(
+            checkpoint.bulletFade,
+          );
+
+        $('checkpoint-audio')
+          .textContent =
+          format(
+            checkpoint.audioIntensity,
+          );
+
+        $('checkpoint-input')
+          .textContent =
+          checkpoint.isActive
+            ? 'BLOCKED'
+            : 'ALLOWED';
+      }
+
+      /*
+       * ==========================================================
+       * GAME LOOP
+       * ==========================================================
+       *
+       * ESTE ES EL ÚNICO GAME LOOP.
+       *
+       * deltaTime:
+       *
+       * milliseconds / 1000
+       *
+       * => segundos
+       */
+
+      let lastTime =
+        performance.now();
+
+      let frames = 0;
+
+      function gameLoop(
+        currentTime,
+      ) {
+        const deltaTime =
+          (
+            currentTime -
+            lastTime
+          ) / 1000;
+
+        lastTime =
+          currentTime;
+
+        frames++;
+
+        coordinator.update(
+          run,
+          deltaTime,
+        );
+
+        updateUI();
+
+        $('delta-time')
+          .textContent =
+          `${deltaTime.toFixed(4)} s`;
+
+        $('fps')
+          .textContent =
+          deltaTime > 0
+            ? Math.round(
+                1 / deltaTime,
+              ).toString()
+            : '—';
+
+        $('frames')
+          .textContent =
+          String(frames);
+
+        requestAnimationFrame(
+          gameLoop,
+        );
+      }
+
+      requestAnimationFrame(
+        gameLoop,
+      );
+
+      /*
+       * ==========================================================
+       * TEST 1
+       * ==========================================================
+       *
+       * Un carácter incorrecto.
+       *
+       * Esperamos:
+       *
+       * error
+       * ↓
+       * ErrorFeedbackSystem activo
+       * ↓
+       * 250ms
+       * ↓
+       * active = false
+       */
+
+      $('test-error')
+        ?.addEventListener(
+          'click',
+          () => {
+            if (
+              run.status !==
+              'running'
+            ) {
+              result(
+                'El Run no está running. Reinicia el test.',
+                'fail',
+              );
+
+              return;
+            }
+
+            const before =
+              coordinator
+                .getErrorFeedbackState();
+
+            const action =
+              coordinator.processCharacter(
+                run,
+                '§',
+              );
+
+            const after =
+              coordinator
+                .getErrorFeedbackState();
+
+            log(
+              `Error → ${action}`,
+              action === 'error'
+                ? 'success'
+                : 'warning',
+            );
+
+            log(
+              `Feedback activo: ${after.isActive}`,
+            );
+
+            log(
+              `Progress inicial: ${after.progress}`,
+            );
+
+            if (
+              action === 'error' &&
+              after.isActive
+            ) {
+              result(
+                'PASS — El error dispara ErrorFeedbackSystem.',
+                'pass',
+              );
+            } else {
+              result(
+                'FAIL — El error feedback no se inició como esperado.',
+                'fail',
+              );
+            }
+
+            updateUI();
+          },
+        );
+
+      /*
+       * ==========================================================
+       * TEST 2
+       * ==========================================================
+       *
+       * Tres errores.
+       *
+       * Esperamos:
+       *
+       * error 1
+       * error 2
+       * error 3
+       * ↓
+       * WeaponSystem
+       * ↓
+       * survived / dead
+       *
+       * No asumimos el resultado del arma.
+       */
+
+      $('test-three-errors')
+        ?.addEventListener(
+          'click',
+          () => {
+            if (
+              run.status !==
+              'running'
+            ) {
+              result(
+                'El Run no está running. Reinicia el test.',
+                'fail',
+              );
+
+              return;
+            }
+
+            log(
+              'Iniciando prueba de 3 errores...',
+            );
+
+            let weaponResult =
+              null;
+
+            for (
+              let i = 1;
+              i <= 3;
+              i++
+            ) {
+              const action =
+                coordinator.processCharacter(
+                  run,
+                  '§',
+                );
+
+              log(
+                `Error ${i} → ${action}`,
+              );
+
+              if (
+                action === 'survived' ||
+                action === 'dead'
+              ) {
+                weaponResult =
+                  action;
+
+                break;
+              }
+            }
+
+            if (
+              weaponResult ===
+              'survived'
+            ) {
+              result(
+                'PASS — El arma se resolvió y el jugador sobrevivió. La corrupción debe comenzar su transición.',
+                'pass',
+              );
+            } else if (
+              weaponResult ===
+              'dead'
+            ) {
+              result(
+                'PASS — El arma se resolvió y produjo muerte. Resultado válido del sistema.',
+                'pass',
+              );
+            } else {
+              result(
+                'FAIL — No se alcanzó la resolución del arma.',
+                'fail',
+              );
+            }
+
+            updateUI();
+          },
+        );
+
+      /*
+       * ==========================================================
+       * TEST 3
+       * ==========================================================
+       *
+       * Transición de corrupción.
+       *
+       * La transición real se produce después
+       * de sobrevivir al arma.
+       *
+       * Como el arma puede producir muerte,
+       * intentamos hasta obtener supervivencia
+       * o hasta que el run muera.
+       */
+
+      $('test-transition')
+        ?.addEventListener(
+          'click',
+          () => {
+            /*
+             * Usamos un Run nuevo para
+             * aislar la prueba.
+             */
+
+            coordinator =
+              new RunCoordinator(300);
+
+            run =
+              coordinator.createRun(
+                testDocument,
+              );
+
+            log(
+              'Nuevo Run creado para Transition Test.',
+            );
+
+            let resolved =
+              false;
+
+            for (
+              let attempt = 1;
+              attempt <= 10;
+              attempt++
+            ) {
+              for (
+                let error = 1;
+                error <= 3;
+                error++
+              ) {
+                const action =
+                  coordinator.processCharacter(
+                    run,
+                    '§',
+                  );
+
+                log(
+                  `Intento ${attempt} — error ${error} → ${action}`,
+                );
+
+                if (
+                  action ===
+                    'survived' ||
+                  action === 'dead'
+                ) {
+                  resolved = true;
+
+                  break;
+                }
+              }
+
+              if (
+                run.status !==
+                'running'
+              ) {
+                break;
+              }
+
+              if (
+                coordinator
+                  .getCorruptionTransitionState()
+                  .isTransitioning
+              ) {
+                break;
+              }
+            }
+
+            if (
+              coordinator
+                .getCorruptionTransitionState()
+                .isTransitioning
+            ) {
+              result(
+                'PASS — La corrupción cambió y CorruptionTransitionSystem está interpolando durante 1000ms.',
+                'pass',
+              );
+
+              log(
+                'Transición activa detectada.',
+                'success',
+              );
+            } else if (
+              resolved &&
+              run.status !==
+                'running'
+            ) {
+              result(
+                'La prueba terminó por muerte antes de poder observar una transición de supervivencia.',
+                'warning',
+              );
+            } else {
+              result(
+                'FAIL — No se detectó una transición.',
+                'fail',
+              );
+            }
+
+            updateUI();
+          },
+        );
+
+      /*
+       * ==========================================================
+       * HELPER
+       * ==========================================================
+       *
+       * Escribe una línea completa usando
+       * processCharacter().
+       */
+
+      function typeLine(
+        text,
+      ) {
+        let lastResult =
+          'correct';
+
+        for (
+          const character of text
+        ) {
+          lastResult =
+            coordinator.processCharacter(
+              run,
+              character,
+            );
+
+          /*
+           * Si aparece un error,
+           * dejamos de escribir.
+           */
+
+          if (
+            lastResult ===
+            'error'
+          ) {
+            return lastResult;
+          }
+
+          if (
+            lastResult ===
+              'dead' ||
+            lastResult ===
+              'completed' ||
+            lastResult ===
+              'survived'
+          ) {
+            return lastResult;
+          }
+        }
+
+        return lastResult;
+      }
+
+      /*
+       * ==========================================================
+       * TEST 4
+       * ==========================================================
+       *
+       * Completar realmente el primer párrafo.
+       *
+       * Esperamos:
+       *
+       * línea 1 completa
+       * ↓
+       * línea 2 completa
+       * ↓
+       * paragraph-complete
+       * ↓
+       * CheckpointSystem
+       * ↓
+       * CheckpointFeedbackSystem
+       */
+
+      $('test-checkpoint')
+        ?.addEventListener(
+          'click',
+          () => {
+            coordinator =
+              new RunCoordinator(300);
+
+            run =
+              coordinator.createRun(
+                testDocument,
+              );
+
+            log(
+              'Nuevo Run creado para Checkpoint Test.',
+            );
+
+            const firstLine =
+              testDocument
+                .paragraphs[0]
+                .lines[0]
+                .text;
+
+            const secondLine =
+              testDocument
+                .paragraphs[0]
+                .lines[1]
+                .text;
+
+            const firstResult =
+              typeLine(
+                firstLine,
+              );
+
+            log(
+              `Primera línea → ${firstResult}`,
+            );
+
+            const secondResult =
+              typeLine(
+                secondLine,
+              );
+
+            log(
+              `Segunda línea → ${secondResult}`,
+            );
+
+            const checkpoint =
+              coordinator
+                .getCheckpointFeedbackState();
+
+            if (
+              secondResult ===
+                'paragraph-complete' &&
+              checkpoint.isActive &&
+              checkpoint.phase ===
+                'feedback'
+            ) {
+              result(
+                'PASS — Completar el párrafo dispara el CheckpointFeedbackSystem.',
+                'pass',
+              );
+
+              log(
+                'Checkpoint feedback activo.',
+                'success',
+              );
+            } else {
+              result(
+                'FAIL — El checkpoint no se activó como esperado.',
+                'fail',
+              );
+            }
+
+            updateUI();
+          },
+        );
+
+      /*
+       * ==========================================================
+       * TEST 5
+       * ==========================================================
+       *
+       * Comprueba explícitamente el bloqueo
+       * del input durante feedback + break.
+       */
+
+      $('test-checkpoint-input')
+        ?.addEventListener(
+          'click',
+          () => {
+            coordinator =
+              new RunCoordinator(300);
+
+            run =
+              coordinator.createRun(
+                testDocument,
+              );
+
+            log(
+              'Nuevo Run creado para Input Lock Test.',
+            );
+
+            const firstLine =
+              testDocument
+                .paragraphs[0]
+                .lines[0]
+                .text;
+
+            const secondLine =
+              testDocument
+                .paragraphs[0]
+                .lines[1]
+                .text;
+
+            typeLine(
+              firstLine,
+            );
+
+            const paragraphResult =
+              typeLine(
+                secondLine,
+              );
+
+            if (
+              paragraphResult !==
+                'paragraph-complete'
+            ) {
+              result(
+                `FAIL — No se completó el párrafo. Resultado: ${paragraphResult}`,
+                'fail',
+              );
+
+              return;
+            }
+
+            const before =
+              run.currentLine;
+
+            /*
+             * Intentamos introducir
+             * un carácter inmediatamente.
+             */
+
+            const blockedResult =
+              coordinator.processCharacter(
+                'X',
+              );
+
+            const after =
+              run.currentLine;
+
+            const checkpoint =
+              coordinator
+                .getCheckpointFeedbackState();
+
+            log(
+              `Input durante checkpoint → ${blockedResult}`,
+            );
+
+            log(
+              `Línea antes: ${before}`,
+            );
+
+            log(
+              `Línea después: ${after}`,
+            );
+
+            log(
+              `Checkpoint phase: ${checkpoint.phase}`,
+            );
+
+            if (
+              checkpoint.isActive &&
+              before === after
+            ) {
+              result(
+                'PASS — El input queda bloqueado durante feedback + break.',
+                'pass',
+              );
+            } else {
+              result(
+                'FAIL — El input no quedó bloqueado correctamente.',
+                'fail',
+              );
+            }
+
+            updateUI();
+          },
+        );
+
+      /*
+       * ==========================================================
+       * TEST 6
+       * ==========================================================
+       *
+       * La interrupción de transición se comprueba
+       * observando que una transición activa
+       * puede cambiar de objetivo.
+       *
+       * La API pública que tenemos actualmente
+       * permite producir esto mediante dos
+       * cambios consecutivos de corrupción.
+       */
+
+      $('test-interruption')
+        ?.addEventListener(
+          'click',
+          () => {
+            coordinator =
+              new RunCoordinator(300);
+
+            run =
+              coordinator.createRun(
+                testDocument,
+              );
+
+            log(
+              'Nuevo Run creado para Interruption Test.',
+            );
+
+            /*
+             * Primer cambio de corrupción.
+             */
+
+            let firstTransition =
+              false;
+
+            for (
+              let i = 0;
+              i < 10;
+              i++
+            ) {
+              for (
+                let e = 0;
+                e < 3;
+                e++
+              ) {
+                const action =
+                  coordinator.processCharacter(
+                    run,
+                    '§',
+                  );
+
+                if (
+                  action ===
+                  'survived'
+                ) {
+                  firstTransition =
+                    coordinator
+                      .getCorruptionTransitionState()
+                      .isTransitioning;
+
+                  break;
+                }
+
+                if (
+                  action === 'dead'
+                ) {
+                  break;
+                }
+              }
+
+              if (
+                firstTransition ||
+                run.status !==
+                  'running'
+              ) {
+                break;
+              }
+            }
+
+            if (
+              !firstTransition
+            ) {
+              result(
+                'No fue posible iniciar la primera transición porque el arma produjo muerte.',
+                'warning',
+              );
+
+              return;
+            }
+
+            /*
+             * Dejamos avanzar la transición
+             * parcialmente.
+             */
+
+            coordinator.update(
+              run,
+              0.3,
+            );
+
+            const before =
+              coordinator
+                .getCorruptionTransitionState();
+
+            log(
+              `Primera transición progress=${before.progress.toFixed(3)}`,
+            );
+
+            /*
+             * Intentamos producir otra
+             * supervivencia.
+             */
+
+            let secondTransition =
+              false;
+
+            for (
+              let e = 0;
+              e < 3;
+              e++
+            ) {
+              const action =
+                coordinator.processCharacter(
+                  run,
+                  '§',
+                );
+
+              log(
+                `Segundo cambio → ${action}`,
+              );
+
+              if (
+                action ===
+                'survived'
+              ) {
+                secondTransition =
+                  true;
+
+                break;
+              }
+
+              if (
+                action === 'dead'
+              ) {
+                break;
+              }
+            }
+
+            const after =
+              coordinator
+                .getCorruptionTransitionState();
+
+            if (
+              secondTransition &&
+              after.isTransitioning
+            ) {
+              result(
+                'PASS — Una nueva transición puede interrumpir la anterior y continuar desde el estado visual actual.',
+                'pass',
+              );
+
+              log(
+                'Interrupción de transición detectada.',
+                'success',
+              );
+            } else {
+              result(
+                'La segunda supervivencia no pudo producirse en esta ejecución.',
+                'warning',
+              );
+            }
+
+            updateUI();
+          },
+        );
+
+      /*
+       * ==========================================================
+       * RESET
+       * ==========================================================
+       */
+
+      $('new-run')
+        ?.addEventListener(
+          'click',
+          () => {
+            coordinator =
+              new RunCoordinator(300);
+
+            run =
+              coordinator.createRun(
+                testDocument,
+              );
+
+            log(
+              'Run reiniciado.',
+              'success',
+            );
+
+            result(
+              'Run reiniciado. Todos los sistemas vuelven a su estado inicial.',
+              'neutral',
+            );
+
+            updateUI();
+          },
+        );
+
+      /*
+       * ==========================================================
+       * INITIAL
+       * ==========================================================
+       */
+
+      log(
+        'RunCoordinator creado.',
+        'success',
+      );
+
+      log(
+        'Game Loop iniciado.',
+        'success',
+      );
+
+      log(
+        'deltaTime expresado en segundos.',
+        'success',
+      );
+
+      log(
+        'Stage inicial: ' +
+          coordinator.getCorruptionStage(
+            run,
+          ),
+      );
+
+      updateUI();
+    </script>
+  </body>
+</html>

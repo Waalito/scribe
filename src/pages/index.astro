@@ -1,12 +1,20 @@
 ---
-import Welcome from '../components/Welcome.astro';
 import Layout from '../layouts/Layout.astro';
-import ThreeTest from "../components/ThreeTest.astro";
-import '../styles/global.css'
+import '../styles/global.css';
+import RunWeaponTest from '../components/RunWeaponTest.astro';
+import Error from '../components/error-feedback-test.astro';
+import CheckTest from '../components/checkpoint-feedback-test.astro'
+import GameLoop from '../components/game-loop.astro';
+import Revolver from '../components/ui/Revolver.astro';
+import ErrorIndicator from '../components/ui/ErrorIndicator.astro';
 ---
 
 <Layout>
-	<h3 class="text-4xl font-bold text-blue-600">Welcome to Astro HOLAAAA PINK</h3>
-	<ThreeTest />
+  <main>
+    <GameLoop />
+    <Revolver /> 
+    <ErrorIndicator />
 
+
+  </main>
 </Layout>

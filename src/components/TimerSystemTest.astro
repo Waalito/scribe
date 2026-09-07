@@ -1,0 +1,125 @@
+---
+---
+
+<section>
+  <h1>Timer System Test</h1>
+
+  <p>
+    Tiempo restante:
+    <strong id="time">300</strong>
+  </p>
+
+  <p>
+    Expirado:
+    <strong id="expired">false</strong>
+  </p>
+
+  <button id="tick">Pasar 1 segundo</button>
+  <button id="ten-seconds">Pasar 10 segundos</button>
+  <button id="reset">Reiniciar timer</button>
+</section>
+
+<script>
+  import { TimerSystem } from '@/systems/timer/TimerSystem';
+  import type { DocumentContent } from '@/types/document';
+
+  const documentData: DocumentContent = {
+    metadata: {
+      id: 'timer-test',
+      locale: 'es',
+      title: 'Timer Test',
+      category: 'poem',
+    },
+
+    paragraphs: [
+      {
+        lines: [
+          {
+            text: 'Timer',
+          },
+        ],
+      },
+    ],
+  };
+
+  const timerSystem = new TimerSystem();
+
+  const run = {
+    document: documentData,
+    status: 'running' as const,
+
+    currentParagraph: 0,
+    currentLine: 0,
+    characterIndex: 0,
+
+    errors: 0,
+    totalErrors: 0,
+
+    bullets: 0,
+    corruption: 25,
+    survivedCount: 0,
+
+    timeRemaining: 300,
+  };
+
+  timerSystem.initialize(run);
+
+  const time = document.getElementById('time');
+  const expired = document.getElementById('expired');
+
+  const tickButton = document.getElementById('tick');
+  const tenSecondsButton =
+    document.getElementById('ten-seconds');
+  const resetButton = document.getElementById('reset');
+
+  if (
+    !(time instanceof HTMLElement) ||
+    !(expired instanceof HTMLElement) ||
+    !(tickButton instanceof HTMLButtonElement) ||
+    !(tenSecondsButton instanceof HTMLButtonElement) ||
+    !(resetButton instanceof HTMLButtonElement)
+  ) {
+    throw new Error('Timer test elements not found');
+  }
+
+  function updateUI() {
+    time.textContent = String(run.timeRemaining);
+    expired.textContent = String(
+      timerSystem.isExpired(run),
+    );
+  }
+
+  tickButton.addEventListener('click', () => {
+    timerSystem.tick(run);
+
+    console.log('[TimerSystem]', {
+      timeRemaining: run.timeRemaining,
+      expired: timerSystem.isExpired(run),
+    });
+
+    updateUI();
+  });
+
+  tenSecondsButton.addEventListener('click', () => {
+    timerSystem.tick(run, 10);
+
+    console.log('[TimerSystem]', {
+      timeRemaining: run.timeRemaining,
+      expired: timerSystem.isExpired(run),
+    });
+
+    updateUI();
+  });
+
+  resetButton.addEventListener('click', () => {
+    timerSystem.reset(run);
+
+    console.log('[TimerSystem] Reset', {
+      timeRemaining: run.timeRemaining,
+    });
+
+    updateUI();
+  });
+
+  updateUI();
+</script>

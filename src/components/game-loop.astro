@@ -1,0 +1,262 @@
+---
+---
+
+<section>
+  <h1>Game Loop Test</h1>
+
+  <h2>Estado</h2>
+
+  <p>
+    Estado:
+    <strong id="status">DETENIDO</strong>
+  </p>
+
+  <p>
+    Frames:
+    <strong id="frames">0</strong>
+  </p>
+
+  <p>
+    Delta Time:
+    <strong id="delta">0.000</strong>s
+  </p>
+
+  <p>
+    FPS aproximados:
+    <strong id="fps">0</strong>
+  </p>
+
+  <p>
+    Tiempo acumulado:
+    <strong id="elapsed">0.000</strong>s
+  </p>
+
+  <hr />
+
+  <h2>Pruebas</h2>
+
+  <button id="start">
+    Start
+  </button>
+
+  <button id="start-twice">
+    Start ×2
+  </button>
+
+  <button id="stop">
+    Stop
+  </button>
+
+  <button id="reset">
+    Reset
+  </button>
+
+  <hr />
+
+  <h2>Log</h2>
+
+  <pre id="log"></pre>
+</section>
+
+<script>
+  import {
+    GameLoop,
+  } from '@/systems/core/GameLoop';
+
+  const status =
+    document.getElementById(
+      'status',
+    );
+
+  const frames =
+    document.getElementById(
+      'frames',
+    );
+
+  const delta =
+    document.getElementById(
+      'delta',
+    );
+
+  const fps =
+    document.getElementById(
+      'fps',
+    );
+
+  const elapsed =
+    document.getElementById(
+      'elapsed',
+    );
+
+  const log =
+    document.getElementById(
+      'log',
+    );
+
+  const startButton =
+    document.getElementById(
+      'start',
+    );
+
+  const startTwiceButton =
+    document.getElementById(
+      'start-twice',
+    );
+
+  const stopButton =
+    document.getElementById(
+      'stop',
+    );
+
+  const resetButton =
+    document.getElementById(
+      'reset',
+    );
+
+  if (
+    !(status instanceof HTMLElement) ||
+    !(frames instanceof HTMLElement) ||
+    !(delta instanceof HTMLElement) ||
+    !(fps instanceof HTMLElement) ||
+    !(elapsed instanceof HTMLElement) ||
+    !(log instanceof HTMLPreElement) ||
+    !(startButton instanceof HTMLButtonElement) ||
+    !(startTwiceButton instanceof HTMLButtonElement) ||
+    !(stopButton instanceof HTMLButtonElement) ||
+    !(resetButton instanceof HTMLButtonElement)
+  ) {
+    throw new Error(
+      'Game Loop test elements not found',
+    );
+  }
+
+  let frameCount = 0;
+  let elapsedTime = 0;
+
+  function writeLog(
+    message: string,
+  ): void {
+    log.textContent +=
+      `${message}\n`;
+  }
+
+  function updateUI(
+    deltaTime: number,
+  ): void {
+    frames.textContent =
+      String(frameCount);
+
+    delta.textContent =
+      deltaTime.toFixed(3);
+
+    elapsed.textContent =
+      elapsedTime.toFixed(3);
+
+    if (deltaTime > 0) {
+      fps.textContent =
+        String(
+          Math.round(
+            1 / deltaTime,
+          ),
+        );
+    }
+  }
+
+  const gameLoop =
+    new GameLoop(
+      (deltaTime) => {
+        frameCount++;
+
+        /*
+         * deltaTime llega en segundos.
+         */
+        elapsedTime +=
+          deltaTime;
+
+        updateUI(
+          deltaTime,
+        );
+      },
+    );
+
+  startButton.addEventListener(
+    'click',
+    () => {
+      gameLoop.start();
+
+      status.textContent =
+        'EJECUTANDO';
+
+      writeLog(
+        'GameLoop.start()',
+      );
+    },
+  );
+
+  /*
+   * Esta prueba intenta iniciar
+   * el mismo GameLoop dos veces.
+   *
+   * Debe seguir existiendo solamente
+   * un loop.
+   */
+  startTwiceButton.addEventListener(
+    'click',
+    () => {
+      gameLoop.start();
+      gameLoop.start();
+
+      status.textContent =
+        'EJECUTANDO';
+
+      writeLog(
+        'GameLoop.start() ×2',
+      );
+    },
+  );
+
+  stopButton.addEventListener(
+    'click',
+    () => {
+      gameLoop.stop();
+
+      status.textContent =
+        'DETENIDO';
+
+      writeLog(
+        'GameLoop.stop()',
+      );
+    },
+  );
+
+  resetButton.addEventListener(
+    'click',
+    () => {
+      gameLoop.stop();
+
+      frameCount = 0;
+      elapsedTime = 0;
+
+      status.textContent =
+        'DETENIDO';
+
+      frames.textContent =
+        '0';
+
+      delta.textContent =
+        '0.000';
+
+      fps.textContent =
+        '0';
+
+      elapsed.textContent =
+        '0.000';
+
+      log.textContent = '';
+
+      writeLog(
+        'GameLoop reset',
+      );
+    },
+  );
+</script>

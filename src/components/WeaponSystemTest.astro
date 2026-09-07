@@ -1,0 +1,115 @@
+---
+---
+
+<section>
+  <h1>Weapon System Test</h1>
+
+  <p>
+    Balas:
+    <strong id="bullets">0</strong>
+  </p>
+
+  <p>
+    Sobreviviste:
+    <strong id="survived">0</strong>
+  </p>
+
+  <p>
+    Resultado:
+    <strong id="result">Esperando...</strong>
+  </p>
+
+  <button id="fire">Añadir bala y disparar</button>
+  <button id="reset">Reiniciar</button>
+</section>
+
+<script>
+  import { WeaponSystem } from '@/systems/weapon/WeaponSystem';
+  import type { RunState } from '@/types/run';
+  import type { DocumentContent } from '@/types/document';
+
+  const testDocument: DocumentContent = {
+    metadata: {
+      id: 'weapon-test',
+      locale: 'es',
+      title: 'Weapon Test',
+      category: 'poem',
+    },
+
+    paragraphs: [
+      {
+        lines: [
+          {
+            text: 'Test',
+          },
+        ],
+      },
+    ],
+  };
+
+  const weaponSystem = new WeaponSystem();
+
+  const createTestRun = (): RunState => ({
+    document: testDocument,
+
+    currentParagraph: 0,
+    currentLine: 0,
+    characterIndex: 0,
+
+    errors: 0,
+    totalErrors: 0,
+
+    bullets: 0,
+    corruption: 25,
+    survivedCount: 0,
+  });
+
+  let run = createTestRun();
+
+  const bullets = document.getElementById('bullets');
+  const survived = document.getElementById('survived');
+  const result = document.getElementById('result');
+
+  const fireButton = document.getElementById('fire');
+  const resetButton = document.getElementById('reset');
+
+  if (
+    !(bullets instanceof HTMLElement) ||
+    !(survived instanceof HTMLElement) ||
+    !(result instanceof HTMLElement) ||
+    !(fireButton instanceof HTMLButtonElement) ||
+    !(resetButton instanceof HTMLButtonElement)
+  ) {
+    throw new Error('Weapon test elements not found');
+  }
+
+  function updateUI() {
+    bullets.textContent = String(run.bullets);
+    survived.textContent = String(run.survivedCount);
+  }
+
+  fireButton.addEventListener('click', () => {
+    const weaponResult = weaponSystem.addBullet(run);
+
+    result.textContent = weaponResult;
+
+    console.log('[WeaponSystem]', {
+      result: weaponResult,
+      bullets: run.bullets,
+      survivedCount: run.survivedCount,
+      corruption: run.corruption,
+    });
+
+    updateUI();
+  });
+
+  resetButton.addEventListener('click', () => {
+    run = createTestRun();
+
+    result.textContent = 'Reiniciado';
+
+    updateUI();
+  });
+
+  updateUI();
+</script>

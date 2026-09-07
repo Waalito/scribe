@@ -1,0 +1,215 @@
+---
+import { RunCoordinator } from '@/systems/run/RunCoordinator';
+import type { DocumentContent } from '@/types/document';
+
+const testDocument: DocumentContent = {
+  metadata: {
+    id: 'test-run',
+    locale: 'es',
+    title: 'Documento de prueba',
+    category: 'poem',
+  },
+
+  paragraphs: [
+    {
+      lines: [
+        {
+          text: 'Hola',
+        },
+        {
+          text: 'Mundo',
+        },
+      ],
+    },
+    {
+      lines: [
+        {
+          text: 'Final',
+        },
+      ],
+    },
+  ],
+};
+
+const coordinator = new RunCoordinator();
+const run = coordinator.createRun(testDocument);
+
+run.corruption = 25;
+---
+
+<section>
+  <h1>Run System Test</h1>
+
+  <p>
+    Párrafo:
+    <strong id="paragraph">{run.currentParagraph}</strong>
+  </p>
+
+  <p>
+    Línea:
+    <strong id="line">{run.currentLine}</strong>
+  </p>
+
+  <p>
+    Carácter:
+    <strong id="character">{run.characterIndex}</strong>
+  </p>
+
+  <p>
+    Errores:
+    <strong id="errors">{run.errors}</strong>
+  </p>
+
+  <p>
+    Errores totales:
+    <strong id="total-errors">{run.totalErrors}</strong>
+  </p>
+
+  <p>
+    Balas:
+    <strong id="bullets">{run.bullets}</strong>
+  </p>
+
+  <p>
+    Corrupción:
+    <strong id="corruption">{run.corruption}</strong>
+  </p>
+
+  <p>
+    Resultado:
+    <strong id="result">Esperando...</strong>
+  </p>
+
+  <button id="correct">Carácter correcto</button>
+  <button id="error">Provocar error</button>
+  <button id="reset">Reiniciar prueba</button>
+</section>
+
+<script>
+  import { RunCoordinator } from '@/systems/run/RunCoordinator';
+  import type { DocumentContent } from '@/types/document';
+
+  const documentData: DocumentContent = {
+    metadata: {
+      id: 'test-run',
+      locale: 'es',
+      title: 'Documento de prueba',
+      category: 'poem',
+    },
+
+    paragraphs: [
+      {
+        lines: [
+          { text: 'Hola' },
+          { text: 'Mundo' },
+        ],
+      },
+      {
+        lines: [
+          { text: 'Final' },
+        ],
+      },
+    ],
+  };
+
+  const coordinator = new RunCoordinator();
+  let run = coordinator.createRun(documentData);
+
+  run.corruption = 25;
+
+  const paragraph = document.getElementById('paragraph');
+  const line = document.getElementById('line');
+  const character = document.getElementById('character');
+  const errors = document.getElementById('errors');
+  const totalErrors = document.getElementById('total-errors');
+  const bullets = document.getElementById('bullets');
+  const corruption = document.getElementById('corruption');
+  const result = document.getElementById('result');
+
+  const correctButton = document.getElementById('correct');
+  const errorButton = document.getElementById('error');
+  const resetButton = document.getElementById('reset');
+
+  if (
+    !(paragraph instanceof HTMLElement) ||
+    !(line instanceof HTMLElement) ||
+    !(character instanceof HTMLElement) ||
+    !(errors instanceof HTMLElement) ||
+    !(totalErrors instanceof HTMLElement) ||
+    !(bullets instanceof HTMLElement) ||
+    !(corruption instanceof HTMLElement) ||
+    !(result instanceof HTMLElement) ||
+    !(correctButton instanceof HTMLButtonElement) ||
+    !(errorButton instanceof HTMLButtonElement) ||
+    !(resetButton instanceof HTMLButtonElement)
+  ) {
+    throw new Error('Run test elements not found');
+  }
+
+  function updateUI() {
+    paragraph.textContent = String(run.currentParagraph);
+    line.textContent = String(run.currentLine);
+    character.textContent = String(run.characterIndex);
+    errors.textContent = String(run.errors);
+    totalErrors.textContent = String(run.totalErrors);
+    bullets.textContent = String(run.bullets);
+    corruption.textContent = String(run.corruption);
+  }
+
+  function process(characterInput: string) {
+    const typingResult = coordinator.processCharacter(
+      run,
+      characterInput,
+    );
+
+    result.textContent = typingResult;
+
+    console.log('[RunCoordinator]', {
+      result: typingResult,
+      paragraph: run.currentParagraph,
+      line: run.currentLine,
+      character: run.characterIndex,
+      errors: run.errors,
+      totalErrors: run.totalErrors,
+      bullets: run.bullets,
+      corruption: run.corruption,
+    });
+
+    updateUI();
+  }
+
+  correctButton.addEventListener('click', () => {
+    const currentLine =
+      run.document.paragraphs[run.currentParagraph]?.lines[
+        run.currentLine
+      ];
+
+    if (!currentLine) {
+      return;
+    }
+
+    const expectedCharacter =
+      currentLine.text[run.characterIndex];
+
+    if (expectedCharacter === undefined) {
+      return;
+    }
+
+    process(expectedCharacter);
+  });
+
+  errorButton.addEventListener('click', () => {
+    process('!');
+  });
+
+  resetButton.addEventListener('click', () => {
+    run = coordinator.createRun(documentData);
+    run.corruption = 25;
+
+    result.textContent = 'Reiniciado';
+
+    updateUI();
+  });
+
+  updateUI();
+</script>

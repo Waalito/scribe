@@ -1,0 +1,137 @@
+---
+
+---
+
+<section>
+  <h1>Checkpoint Feedback System Test</h1>
+  <h2>Estado</h2>
+  <p>Activo: <strong id="active">NO</strong></p>
+  <p>Fase: <strong id="phase">idle</strong></p>
+  <p>Progress: <strong id="progress">0.000</strong></p>
+  <p>Feedback Progress: <strong id="feedback-progress">0.000</strong></p>
+  <p>Break Progress: <strong id="break-progress">0.000</strong></p>
+  <p>Puede aceptar input: <strong id="can-input">SÍ</strong></p>
+  <hr />
+  <h2>Elementos visuales</h2>
+  <p>Errores: <strong id="error-fade">0.000</strong></p>
+  <p>Balas: <strong id="bullet-fade">0.000</strong></p>
+  <p>Audio: <strong id="audio">0.000</strong></p>
+  <hr />
+  <h2>Tiempo</h2>
+  <p>Tiempo transcurrido: <strong id="elapsed">0</strong> ms</p>
+  <p>Duración feedback: <strong>1000</strong> ms</p>
+  <p>Duración break: <strong>3000</strong> ms</p>
+  <p>Duración total: <strong>4000</strong> ms</p>
+  <hr />
+  <h2>Pruebas</h2>
+  <button id="trigger"> Alcanzar checkpoint </button>
+  <button id="update-16"> Update 16ms </button>
+  <button id="update-100"> Update 100ms </button>
+  <button id="update-500"> Update 500ms </button>
+  <button id="update-1000"> Update 1000ms </button>
+  <button id="update-3000"> Update 3000ms </button>
+  <button id="update-4000"> Update 4000ms </button>
+  <button id="reset"> Reiniciar </button>
+  <hr />
+  <h2>Resultado</h2>
+  <p><strong id="result"> Esperando... </strong></p>
+</section>
+<script>
+  import { CheckpointFeedbackSystem } from "@/systems/feedback/CheckpointFeedbackSystem";
+  const feedbackSystem = new CheckpointFeedbackSystem();
+  const active = document.getElementById("active");
+  const phase = document.getElementById("phase");
+  const progress = document.getElementById("progress");
+  const feedbackProgress = document.getElementById("feedback-progress");
+  const breakProgress = document.getElementById("break-progress");
+  const canInput = document.getElementById("can-input");
+  const errorFade = document.getElementById("error-fade");
+  const bulletFade = document.getElementById("bullet-fade");
+  const audio = document.getElementById("audio");
+  const elapsed = document.getElementById("elapsed");
+  const result = document.getElementById("result");
+  const triggerButton = document.getElementById("trigger");
+  const update16Button = document.getElementById("update-16");
+  const update100Button = document.getElementById("update-100");
+  const update500Button = document.getElementById("update-500");
+  const update1000Button = document.getElementById("update-1000");
+  const update3000Button = document.getElementById("update-3000");
+  const update4000Button = document.getElementById("update-4000");
+  const resetButton = document.getElementById("reset");
+  if (
+    !(active instanceof HTMLElement) ||
+    !(phase instanceof HTMLElement) ||
+    !(progress instanceof HTMLElement) ||
+    !(feedbackProgress instanceof HTMLElement) ||
+    !(breakProgress instanceof HTMLElement) ||
+    !(canInput instanceof HTMLElement) ||
+    !(errorFade instanceof HTMLElement) ||
+    !(bulletFade instanceof HTMLElement) ||
+    !(audio instanceof HTMLElement) ||
+    !(elapsed instanceof HTMLElement) ||
+    !(result instanceof HTMLElement) ||
+    !(triggerButton instanceof HTMLButtonElement) ||
+    !(update16Button instanceof HTMLButtonElement) ||
+    !(update100Button instanceof HTMLButtonElement) ||
+    !(update500Button instanceof HTMLButtonElement) ||
+    !(update1000Button instanceof HTMLButtonElement) ||
+    !(update3000Button instanceof HTMLButtonElement) ||
+    !(update4000Button instanceof HTMLButtonElement) ||
+    !(resetButton instanceof HTMLButtonElement)
+  ) {
+    throw new Error("Checkpoint feedback test elements not found");
+  }
+  let elapsedMilliseconds = 0;
+  function updateUI() {
+    const state = feedbackSystem.getState();
+    active.textContent = state.isActive ? "SÍ" : "NO";
+    phase.textContent = state.phase;
+    progress.textContent = state.progress.toFixed(3);
+    feedbackProgress.textContent = state.feedbackProgress.toFixed(3);
+    breakProgress.textContent = state.breakProgress.toFixed(3);
+    canInput.textContent = feedbackSystem.canAcceptInput() ? "SÍ" : "NO";
+    errorFade.textContent = state.errorFade.toFixed(3);
+    bulletFade.textContent = state.bulletFade.toFixed(3);
+    audio.textContent = state.audioIntensity.toFixed(3);
+    elapsed.textContent = String(elapsedMilliseconds);
+    console.log("[Checkpoint Feedback]", state);
+  }
+  function update(milliseconds: number) {
+    feedbackSystem.update(milliseconds / 1000);
+    elapsedMilliseconds += milliseconds;
+    /* * La secuencia completa dura * exactamente 4000ms. */ elapsedMilliseconds =
+      Math.min(elapsedMilliseconds, 4000);
+    updateUI();
+  }
+  /* * TRIGGER */ triggerButton.addEventListener("click", () => {
+    feedbackSystem.trigger();
+    elapsedMilliseconds = 0;
+    result.textContent = "Checkpoint iniciado";
+    updateUI();
+  });
+  /* * UPDATES */ update16Button.addEventListener("click", () => {
+    update(16);
+  });
+  update100Button.addEventListener("click", () => {
+    update(100);
+  });
+  update500Button.addEventListener("click", () => {
+    update(500);
+  });
+  update1000Button.addEventListener("click", () => {
+    update(1000);
+  });
+  update3000Button.addEventListener("click", () => {
+    update(3000);
+  });
+  update4000Button.addEventListener("click", () => {
+    update(4000);
+  });
+  /* * RESET */ resetButton.addEventListener("click", () => {
+    feedbackSystem.reset();
+    elapsedMilliseconds = 0;
+    result.textContent = "Sistema reiniciado";
+    updateUI();
+  });
+  updateUI();
+</script>

@@ -1,1 +1,91 @@
 @import "tailwindcss";
+
+/* |-------------------------------------------------------------------------- | SCRIBE — DARK FANTASY / DARK ACADEMIA |-------------------------------------------------------------------------- | | Filosofía visual: | | ABYSS → mundo / fondo / inmersión | PARCHMENT → documentos / texto | IRON → máquina / interfaz | BLOOD → error / daño / corrupción | SAGE → acierto / estabilidad / combo | GOLD → score / récord / elementos especiales | | Los colores deben sentirse envejecidos, apagados y materiales. | Evitar colores excesivamente saturados. | |-------------------------------------------------------------------------- */ /* ========================================================================== ABYSS Fondo y atmósfera general ========================================================================== */
+:root {
+  --color-abyss: #171315;
+  --color-abyss-deep: #080808;
+  --color-abyss-walnut: #2a211e;
+  --color-abyss-mahogany: #26191a;
+  --color-abyss-mist: #343536; /* ========================================================================== IRON / TYPEWRITER Máquina, teclado y superficies de la interfaz ========================================================================== */
+  --color-iron-light: #8a8780;
+  --color-iron: #62615d;
+  --color-iron-dark: #444441;
+  --color-iron-charcoal: #292927;
+  --color-iron-black: #1a1918;
+  --color-metal-border: #555451;
+  --color-metal-muted: #373735; /* ========================================================================== PARCHMENT Documentos y texto ========================================================================== */
+  --color-parchment-light: #ebe5d9;
+  --color-parchment: #d9cbb4;
+  --color-parchment-aged: #c4a77e;
+  --color-parchment-dark: #967b5b; /* Texto pendiente de escribir */
+  --color-ink-untyped: #696a66; /* Texto secundario / información */
+  --color-ink-muted: #4a4b48; /* ========================================================================== BLOOD Errores, daño, corrupción y muerte ========================================================================== */
+  --color-blood-fresh: #a8322f;
+  --color-blood: #7d2426;
+  --color-blood-dried: #4a181b;
+  --color-blood-dark: #2b1013; /* ========================================================================== VERDICT / SAGE Éxito, precisión, estabilidad y combo ========================================================================== */
+  --color-sage-light: #969783;
+  --color-sage: #747764;
+  --color-sage-dark: #454936;
+  --color-sage-deep: #303326; /* ========================================================================== GOLD Score, récords y elementos excepcionales ========================================================================== */
+  --color-gold-light: #d0bc89;
+  --color-gold: #b39a63;
+  --color-gold-dark: #76633e;
+} /* ========================================================================== TAILWIND THEME ========================================================================== */
+@theme {
+  /* --- Abyss --- */
+  --color-abyss: var(--color-abyss);
+  --color-abyss-deep: var(--color-abyss-deep);
+  --color-abyss-walnut: var(--color-abyss-walnut);
+  --color-abyss-mahogany: var(--color-abyss-mahogany);
+  --color-abyss-mist: var(--color-abyss-mist); /* --- Iron --- */
+  --color-iron-light: var(--color-iron-light);
+  --color-iron: var(--color-iron);
+  --color-iron-dark: var(--color-iron-dark);
+  --color-iron-charcoal: var(--color-iron-charcoal);
+  --color-iron-black: var(--color-iron-black);
+  --color-metal-border: var(--color-metal-border);
+  --color-metal-muted: var(--color-metal-muted); /* --- Parchment --- */
+  --color-parchment-light: var(--color-parchment-light);
+  --color-parchment: var(--color-parchment);
+  --color-parchment-aged: var(--color-parchment-aged);
+  --color-parchment-dark: var(--color-parchment-dark);
+  --color-ink-untyped: var(--color-ink-untyped);
+  --color-ink-muted: var(--color-ink-muted); /* --- Blood --- */
+  --color-blood-fresh: var(--color-blood-fresh);
+  --color-blood: var(--color-blood);
+  --color-blood-dried: var(--color-blood-dried);
+  --color-blood-dark: var(--color-blood-dark); /* --- Sage --- */
+  --color-sage-light: var(--color-sage-light);
+  --color-sage: var(--color-sage);
+  --color-sage-dark: var(--color-sage-dark);
+  --color-sage-deep: var(--color-sage-deep); /* --- Gold --- */
+  --color-gold-light: var(--color-gold-light);
+  --color-gold: var(--color-gold);
+  --color-gold-dark: var(--color-gold-dark);
+} /* ========================================================================== GLOBAL ========================================================================== */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--color-abyss-deep);
+  color: var(--color-parchment-light);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}

@@ -1,0 +1,316 @@
+---
+---
+
+<div class="revolver-container" aria-hidden="true">
+  <svg
+    id="revolver"
+    viewBox="-200 -200 400 400"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <defs>
+      <mask id="cylinder-mask">
+        <circle cx="0" cy="0" r="175" fill="white" />
+
+        <!-- Centro -->
+        <circle cx="0" cy="0" r="18" fill="black" />
+
+        <!-- Cámaras exteriores -->
+        <circle cx="0" cy="-185" r="32" fill="black" transform="rotate(30)" />
+        <circle cx="0" cy="-185" r="32" fill="black" transform="rotate(90)" />
+        <circle cx="0" cy="-185" r="32" fill="black" transform="rotate(150)" />
+        <circle cx="0" cy="-185" r="32" fill="black" transform="rotate(210)" />
+        <circle cx="0" cy="-185" r="32" fill="black" transform="rotate(270)" />
+        <circle cx="0" cy="-185" r="32" fill="black" transform="rotate(330)" />
+
+        <!-- Cámaras interiores -->
+        <circle cx="0" cy="-105" r="38" fill="black" />
+        <circle cx="0" cy="-105" r="38" fill="black" transform="rotate(60)" />
+        <circle cx="0" cy="-105" r="38" fill="black" transform="rotate(120)" />
+        <circle cx="0" cy="-105" r="38" fill="black" transform="rotate(180)" />
+        <circle cx="0" cy="-105" r="38" fill="black" transform="rotate(240)" />
+        <circle cx="0" cy="-105" r="38" fill="black" transform="rotate(300)" />
+      </mask>
+    </defs>
+
+    <g id="revolver-cylinder">
+
+      <!-- Cuerpo del cilindro -->
+      <circle
+        cx="0"
+        cy="0"
+        r="175"
+        fill="#000000"
+        mask="url(#cylinder-mask)"
+      />
+
+      <!-- Centro -->
+      <circle
+        cx="0"
+        cy="0"
+        r="26"
+        fill="none"
+        stroke="#000000"
+        stroke-width="6"
+      />
+
+      <!-- Cámara 0 -->
+      <g class="revolver-chamber" data-chamber="0">
+        <circle
+          cx="0"
+          cy="-105"
+          r="35"
+          fill="transparent"
+        />
+
+        <circle
+          class="revolver-bullet"
+          data-bullet="0"
+          cx="0"
+          cy="-105"
+          r="20"
+        />
+      </g>
+
+      <!-- Cámara 1 -->
+      <g class="revolver-chamber" data-chamber="1">
+        <circle
+          cx="0"
+          cy="-105"
+          r="35"
+          fill="transparent"
+          transform="rotate(60)"
+        />
+
+        <circle
+          class="revolver-bullet"
+          data-bullet="1"
+          cx="0"
+          cy="-105"
+          r="20"
+          transform="rotate(60)"
+        />
+      </g>
+
+      <!-- Cámara 2 -->
+      <g class="revolver-chamber" data-chamber="2">
+        <circle
+          cx="0"
+          cy="-105"
+          r="35"
+          fill="transparent"
+          transform="rotate(120)"
+        />
+
+        <circle
+          class="revolver-bullet"
+          data-bullet="2"
+          cx="0"
+          cy="-105"
+          r="20"
+          transform="rotate(120)"
+        />
+      </g>
+
+      <!-- Cámara 3 -->
+      <g class="revolver-chamber" data-chamber="3">
+        <circle
+          cx="0"
+          cy="-105"
+          r="35"
+          fill="transparent"
+          transform="rotate(180)"
+        />
+
+        <circle
+          class="revolver-bullet"
+          data-bullet="3"
+          cx="0"
+          cy="-105"
+          r="20"
+          transform="rotate(180)"
+        />
+      </g>
+
+      <!-- Cámara 4 -->
+      <g class="revolver-chamber" data-chamber="4">
+        <circle
+          cx="0"
+          cy="-105"
+          r="35"
+          fill="transparent"
+          transform="rotate(240)"
+        />
+
+        <circle
+          class="revolver-bullet"
+          data-bullet="4"
+          cx="0"
+          cy="-105"
+          r="20"
+          transform="rotate(240)"
+        />
+      </g>
+
+      <!-- Cámara 5 -->
+      <g class="revolver-chamber" data-chamber="5">
+        <circle
+          cx="0"
+          cy="-105"
+          r="35"
+          fill="transparent"
+          transform="rotate(300)"
+        />
+
+        <circle
+          class="revolver-bullet"
+          data-bullet="5"
+          cx="0"
+          cy="-105"
+          r="20"
+          transform="rotate(300)"
+        />
+      </g>
+
+    </g>
+  </svg>
+</div>
+
+<style>
+  .revolver-container {
+    width: 45px;
+    height: 45px;
+    position: relative;
+  }
+
+  #revolver {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #revolver-cylinder {
+    transition:
+      transform 3s cubic-bezier(0.15, 0.85, 0.35, 1.2);
+  }
+
+  .revolver-bullet {
+    visibility: hidden;
+    fill: currentColor;
+  }
+
+  .revolver-bullet.is-loaded {
+    visibility: visible;
+  }
+</style>
+
+<script>
+  const revolver = document.querySelector("#revolver");
+
+  if (revolver instanceof SVGElement) {
+    const cylinder =
+      revolver.querySelector("#revolver-cylinder");
+
+    const bullets = Array.from(
+      revolver.querySelectorAll<SVGCircleElement>(
+        ".revolver-bullet"
+      )
+    );
+
+    let currentRotation = 0;
+
+    const loadBullet = (chamber: number) => {
+      const bullet = bullets[chamber];
+
+      if (!bullet) return;
+
+      bullet.classList.add("is-loaded");
+    };
+
+    const removeBullet = (chamber: number) => {
+      const bullet = bullets[chamber];
+
+      if (!bullet) return;
+
+      bullet.classList.remove("is-loaded");
+    };
+
+    const reset = () => {
+      bullets.forEach((bullet) => {
+        bullet.classList.remove("is-loaded");
+      });
+    };
+
+    const spin = (chamber: number) => {
+      if (!(cylinder instanceof SVGGElement)) return;
+
+      const extraTurns =
+        (Math.floor(Math.random() * 4) + 3) * 360;
+
+      const currentNormalized =
+        ((currentRotation % 360) + 360) % 360;
+
+      const targetRotation =
+        (-chamber * 60 -
+          currentNormalized +
+          360) %
+        360;
+
+      currentRotation +=
+        extraTurns + targetRotation;
+
+      cylinder.setAttribute(
+        "transform",
+        `rotate(${currentRotation} 0 0)`
+      );
+    };
+
+    revolver.addEventListener(
+      "revolver:load",
+      (event) => {
+        if (!(event instanceof CustomEvent)) return;
+
+        const chamber =
+          event.detail?.chamber;
+
+        if (typeof chamber !== "number") return;
+
+        loadBullet(chamber);
+      }
+    );
+
+    revolver.addEventListener(
+      "revolver:remove",
+      (event) => {
+        if (!(event instanceof CustomEvent)) return;
+
+        const chamber =
+          event.detail?.chamber;
+
+        if (typeof chamber !== "number") return;
+
+        removeBullet(chamber);
+      }
+    );
+
+    revolver.addEventListener(
+      "revolver:reset",
+      () => {
+        reset();
+      }
+    );
+
+    revolver.addEventListener(
+      "revolver:spin",
+      (event) => {
+        if (!(event instanceof CustomEvent)) return;
+
+        const chamber =
+          event.detail?.chamber;
+
+        if (typeof chamber !== "number") return;
+
+        spin(chamber);
+      }
+    );
+  }
+</script>
