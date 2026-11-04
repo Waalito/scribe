@@ -3,6 +3,8 @@ import { DocumentSystem } from "../systems/document/DocumentSystem";
 import { RunCoordinator } from "../systems/run/RunCoordinator";
 import { GameLoop } from "../systems/core/GameLoop";
 
+import { TypingAudio } from "../systems/audio/TypingAudio";
+
 /* ============================================================
    TYPES
 ============================================================ */
@@ -104,6 +106,7 @@ export function initializeGame(): void {
   const revolver = document.querySelector('#revolver');
   const errorCounter = document.getElementById("error-counter");
 
+
 if (
   !(documentTitle instanceof HTMLElement) ||
   !(documentContainer instanceof HTMLElement) ||
@@ -148,23 +151,36 @@ if (
   ========================================================== */
   const documentSystem = new DocumentSystem();
   const coordinator = new RunCoordinator(300);
+  const typingAudio = new TypingAudio();
 
   let currentDocument: DocumentContent;
   let run: ReturnType<RunCoordinator["createRun"]>;
   let flatLines: FlatLine[] = [];
 
-  /* ==========================================================
-     VISUAL ERROR STATE
-  ========================================================== */
-  let errorParagraph: number | null = null;
-  let errorLine: number | null = null;
-  let errorCharacter: number | null = null;
+/* ============================================================
+   VISUAL ERROR STATE
+============================================================ */
+let errorParagraph: number | null = null;
+let errorLine: number | null = null;
+let errorCharacter: number | null = null;
 
-  let displayedErrors = 0;
+let displayedErrors = 0;
 
 let errorCounterTimeout: number | null = null;
 
-const ERROR_DISPLAY_DURATION = 500;
+const ERROR_DISPLAY_DURATION = 3000;
+
+/**
+ * Posición visual durante el rollback.
+ *
+ * run.characterIndex siempre representa el estado REAL.
+ * Esta variable solamente retrasa visualmente la desaparición
+ * de los caracteres escritos.
+ */
+let rollbackVisualCharacter: number | null = null;
+
+const ROLLBACK_CHARACTER_DURATION = 45;
+let rollbackAccumulator = 0;
 
   /* ==========================================================
      RENDER CACHE
@@ -174,6 +190,11 @@ const ERROR_DISPLAY_DURATION = 500;
   let renderedParagraph = -1;
   let renderedLine = -1;
   let renderedCharacter = -1;
+
+  let renderedRollbackCharacter = -1;
+
+  let renderedCheckpointPhase = "idle";
+let renderedCheckpointProgress = -1;
 
 
   /* ============================================================
@@ -276,6 +297,8 @@ function loadRandomBullet(): number | null {
     })
   );
 
+  typingAudio.playBullet();
+
   return chamber;
 }
 
@@ -308,6 +331,8 @@ function spinRevolver(
 
   revolverAnimating = true;
 
+  typingAudio.playRevolverSpin();
+
   revolver.dispatchEvent(
     new CustomEvent("revolver:spin", {
       detail: {
@@ -316,11 +341,17 @@ function spinRevolver(
     })
   );
 
-  window.setTimeout(() => {
-    revolverAnimating = false;
+window.setTimeout(() => {
+  revolverAnimating = false;
 
-    updateEndScreens();
-  }, REVOLVER_SPIN_DURATION);
+  if (result === "survived") {
+    typingAudio.playFailShot();
+  } else {
+    typingAudio.playGunshot();
+  }
+
+  updateEndScreens();
+}, REVOLVER_SPIN_DURATION);
 }
 
 function resetRevolver(): void {
@@ -423,37 +454,42 @@ function resetRevolver(): void {
   /**
    * Determina si un carácter ya fue escrito.
    */
-  function isCharacterTyped(flatLine: FlatLine, characterIndex: number): boolean {
-    /* --------------------------------------------------------
-       PÁRRAFOS ANTERIORES
-    -------------------------------------------------------- */
-    if (flatLine.paragraphIndex < run.currentParagraph) {
-      return true;
-    }
-
-    /* --------------------------------------------------------
-       LÍNEAS ANTERIORES DEL MISMO PÁRRAFO
-    -------------------------------------------------------- */
-    if (
-      flatLine.paragraphIndex === run.currentParagraph &&
-      flatLine.lineIndex < run.currentLine
-    ) {
-      return true;
-    }
-
-    /* --------------------------------------------------------
-       CARACTERES ANTERIORES DE LA LÍNEA ACTUAL
-    -------------------------------------------------------- */
-    if (
-      flatLine.paragraphIndex === run.currentParagraph &&
-      flatLine.lineIndex === run.currentLine &&
-      characterIndex < run.characterIndex
-    ) {
-      return true;
-    }
-
-    return false;
+function isCharacterTyped(
+  flatLine: FlatLine,
+  characterIndex: number
+): boolean {
+  /* --------------------------------------------------------
+     PÁRRAFOS ANTERIORES
+  -------------------------------------------------------- */
+  if (flatLine.paragraphIndex < run.currentParagraph) {
+    return true;
   }
+
+  /* --------------------------------------------------------
+     LÍNEAS ANTERIORES DEL MISMO PÁRRAFO
+  -------------------------------------------------------- */
+  if (
+    flatLine.paragraphIndex === run.currentParagraph &&
+    flatLine.lineIndex < run.currentLine
+  ) {
+    return true;
+  }
+
+  /* --------------------------------------------------------
+     CARACTERES DE LA LÍNEA ACTUAL
+  -------------------------------------------------------- */
+  if (
+    flatLine.paragraphIndex === run.currentParagraph &&
+    flatLine.lineIndex === run.currentLine
+  ) {
+    const visualCharacterIndex =
+      rollbackVisualCharacter ?? run.characterIndex;
+
+    return characterIndex < visualCharacterIndex;
+  }
+
+  return false;
+}
 
   /**
    * Crea un carácter individual del documento.
@@ -510,20 +546,33 @@ function resetRevolver(): void {
      * El espacio se conserva como recurso narrativo.
      * NO afecta al tamaño del viewport.
      */
+
     if (flatLine.lineIndex === 0) {
-      lineElement.classList.add("is-paragraph-start");
-    }
+  lineElement.classList.add("is-paragraph-start");
+}
 
-    /* --------------------------------------------------------
-       CURRENT LINE
-    -------------------------------------------------------- */
-    const isCurrent =
-      flatLine.paragraphIndex === run.currentParagraph &&
-      flatLine.lineIndex === run.currentLine;
+const checkpointActive =
+  coordinator.getCheckpointFeedbackState().isActive;
 
-    if (isCurrent) {
-      lineElement.classList.add("is-current");
-    }
+const isCheckpointParagraphStart =
+  checkpointActive &&
+  flatLine.paragraphIndex === run.currentParagraph &&
+  flatLine.lineIndex === 0;
+
+if (isCheckpointParagraphStart) {
+  lineElement.classList.add(
+    "is-after-checkpoint",
+  );
+}
+
+const isCurrent =
+  !checkpointActive &&
+  flatLine.paragraphIndex === run.currentParagraph &&
+  flatLine.lineIndex === run.currentLine;
+
+if (isCurrent) {
+  lineElement.classList.add("is-current");
+}
 
     /* --------------------------------------------------------
        PREVIOUS / NEXT
@@ -569,62 +618,123 @@ function resetRevolver(): void {
    *
    * No se renderiza el documento completo.
    */
-  function renderDocumentWindow(force = false): void {
-    const { start, end } = getRenderRange();
-    const currentParagraph = run.currentParagraph;
-    const currentLineIndex = run.currentLine;
-    const currentCharacter = run.characterIndex;
+function renderDocumentWindow(force = false): void {
+  const { start, end } = getRenderRange();
 
-    const hasChanged =
-      renderedStart !== start ||
-      renderedEnd !== end ||
-      renderedParagraph !== currentParagraph ||
-      renderedLine !== currentLineIndex ||
-      renderedCharacter !== currentCharacter;
+  const currentParagraph = run.currentParagraph;
+  const currentLineIndex = run.currentLine;
+  const currentCharacter = run.characterIndex;
 
-    if (!force && !hasChanged) {
-      return;
-    }
+  const checkpointState =
+  coordinator.getCheckpointFeedbackState();
 
-    const previousStart = renderedStart;
+const currentRollbackCharacter =
+  rollbackVisualCharacter ?? -1;
 
-    /* --------------------------------------------------------
-       RENDER DOM
-    -------------------------------------------------------- */
-    documentContainer.replaceChildren();
-    for (let index = start; index < end; index++) {
-      const flatLine = flatLines[index];
-      if (!flatLine) {
-        continue;
-      }
-      const lineElement = createLineElement(flatLine, index);
-      documentContainer.appendChild(lineElement);
-    }
+const hasCheckpointChanged =
+  renderedCheckpointPhase !== checkpointState.phase ||
+  renderedCheckpointProgress !== checkpointState.progress;
 
-    /* --------------------------------------------------------
-       UPDATE CACHE
-    -------------------------------------------------------- */
-    renderedStart = start;
-    renderedEnd = end;
-    renderedParagraph = currentParagraph;
-    renderedLine = currentLineIndex;
-    renderedCharacter = currentCharacter;
+const hasChanged =
+  renderedStart !== start ||
+  renderedEnd !== end ||
+  renderedParagraph !== currentParagraph ||
+  renderedLine !== currentLineIndex ||
+  renderedCharacter !== currentCharacter ||
+  renderedRollbackCharacter !== currentRollbackCharacter ||
+  hasCheckpointChanged;
 
-    /* --------------------------------------------------------
-       CINEMATIC SHIFT
-    -------------------------------------------------------- */
-    if (previousStart !== -1 && previousStart !== start) {
-      animateDocumentShift();
-    }
-
-    console.log("[Scribe] Document window:", {
-      start,
-      end,
-      current: getCurrentFlatIndex(),
-      total: flatLines.length,
-      domLines: documentContainer.children.length,
-    });
+  if (!force && !hasChanged) {
+    return;
   }
+
+  const previousStart = renderedStart;
+
+  // --------------------------------------------------------
+  // RENDER DOM
+  // --------------------------------------------------------
+
+  documentContainer.replaceChildren();
+
+  let checkpointInserted = false;
+
+  for (let index = start; index < end; index++) {
+    const flatLine = flatLines[index];
+
+    if (!flatLine) {
+      continue;
+    }
+
+    // ------------------------------------------------------
+    // CHECKPOINT BREAK
+    // ------------------------------------------------------
+
+    if (
+      checkpointState.isActive &&
+      !checkpointInserted &&
+      flatLine.paragraphIndex === run.currentParagraph &&
+      flatLine.lineIndex === 0
+    ) {
+      documentContainer.appendChild(
+        createCheckpointBreakElement(
+          checkpointState.progress,
+        ),
+      );
+
+      checkpointInserted = true;
+    }
+
+    // ------------------------------------------------------
+    // LINE
+    // ------------------------------------------------------
+
+    const lineElement = createLineElement(
+      flatLine,
+      index,
+    );
+
+    documentContainer.appendChild(lineElement);
+  }
+
+  // --------------------------------------------------------
+  // UPDATE CACHE
+  // --------------------------------------------------------
+
+  renderedStart = start;
+  renderedEnd = end;
+  renderedParagraph = currentParagraph;
+  renderedLine = currentLineIndex;
+  renderedCharacter = currentCharacter;
+
+  renderedCheckpointPhase =
+    checkpointState.phase;
+
+  renderedCheckpointProgress =
+    checkpointState.progress;
+
+  renderedRollbackCharacter =
+    currentRollbackCharacter;
+
+  // --------------------------------------------------------
+  // CINEMATIC SHIFT
+  // --------------------------------------------------------
+
+  if (
+    previousStart !== -1 &&
+    previousStart !== start
+  ) {
+    animateDocumentShift();
+  }
+
+  console.log("[Scribe] Document window:", {
+    start,
+    end,
+    current: getCurrentFlatIndex(),
+    total: flatLines.length,
+    domLines: documentContainer.children.length,
+    checkpoint: checkpointState,
+  });
+}
 
 
   /**
@@ -644,11 +754,61 @@ function resetRevolver(): void {
     renderedLine = -1;
     renderedCharacter = -1;
 
+    renderedCheckpointPhase = "idle";
+    renderedCheckpointProgress = -1;
+
+    rollbackVisualCharacter = null;
+    rollbackAccumulator = 0;
+
     /* --------------------------------------------------------
        INITIAL RENDER
     -------------------------------------------------------- */
     renderDocumentWindow(true);
   }
+
+function triggerErrorImpact(): void {
+  
+  console.log("[Scribe] ERROR IMPACT");
+
+
+  const sensoryLayer =
+    document.getElementById("sensory-layer");
+
+  const sceneLayer =
+    document.getElementById("scene-layer");
+
+  if (
+    !(sensoryLayer instanceof HTMLElement) ||
+    !(sceneLayer instanceof HTMLElement)
+  ) {
+    return;
+  }
+
+  const impact =
+    document.createElement("div");
+
+  impact.className = "error-impact";
+
+  sensoryLayer.appendChild(impact);
+
+  sceneLayer.classList.remove(
+    "scene-impact-active",
+  );
+
+  void sceneLayer.offsetWidth;
+
+  sceneLayer.classList.add(
+    "scene-impact-active",
+  );
+
+  window.setTimeout(() => {
+    impact.remove();
+
+    sceneLayer.classList.remove(
+      "scene-impact-active",
+    );
+  }, 180);
+}
 
 function updateErrorCounter(): void {
   const slots =
@@ -657,9 +817,17 @@ function updateErrorCounter(): void {
     );
 
   slots.forEach((slot, index) => {
+    const shouldBeActive = index < displayedErrors;
+    const wasActive = slot.classList.contains("is-active");
+
+    // Detectamos cuándo aparece una X nueva.
+    if (shouldBeActive && !wasActive) {
+      typingAudio.playWrong();
+    }
+
     slot.classList.toggle(
       "is-active",
-      index < displayedErrors
+      shouldBeActive
     );
   });
 }
@@ -672,6 +840,61 @@ function syncErrorCounter(): void {
   displayedErrors = run.errors;
   updateErrorCounter();
 }
+
+  /* ==========================================================
+     BAR CHECKPOINT
+  ========================================================== */
+
+function createCheckpointBreakElement(
+  progress: number,
+): HTMLElement {
+  const container = document.createElement("div");
+
+  container.className = "checkpoint-break";
+
+  container.setAttribute(
+    "aria-hidden",
+    "true",
+  );
+
+  const bar = document.createElement("div");
+
+  bar.className = "checkpoint-break-bar";
+
+  bar.style.width = `${Math.max(
+    0,
+    1 - progress,
+  ) * 100}%`;
+
+  container.appendChild(bar);
+
+  return container;
+}
+
+function updateRollback(deltaTime: number): void {
+  if (rollbackVisualCharacter === null) {
+    return;
+  }
+
+  rollbackAccumulator += deltaTime;
+
+  const characterStep =
+    ROLLBACK_CHARACTER_DURATION / 1000;
+
+  while (rollbackAccumulator >= characterStep) {
+    rollbackAccumulator -= characterStep;
+
+    rollbackVisualCharacter -= 1;
+
+    if (rollbackVisualCharacter <= 0) {
+      rollbackVisualCharacter = null;
+      typingAudio.stopRollback();
+      rollbackAccumulator = 0;
+      break;
+    }
+  }
+}
+
 
   /* ==========================================================
      UI
@@ -740,6 +963,9 @@ function syncErrorCounter(): void {
     errorLine = null;
     errorCharacter = null;
 
+    rollbackVisualCharacter = null;
+    rollbackAccumulator = 0;
+
     /* --------------------------------------------------------
        CREATE NEW RUN
     -------------------------------------------------------- */
@@ -757,6 +983,14 @@ function syncErrorCounter(): void {
   /* ============================================================
      INPUT HANDLING
   ============================================================ */
+
+  function beginRollbackVisual(character: number): void {
+  rollbackVisualCharacter = character;
+  rollbackAccumulator = 0;
+
+  typingAudio.startRollback();
+}
+
 
   function handleKeyDown(event: KeyboardEvent): void {
     /* --------------------------------------------------------
@@ -801,24 +1035,48 @@ function syncErrorCounter(): void {
     const action = coordinator.processCharacter(run, event.key);
     lastAction.textContent = action;
 
+
+
     /* ========================================================
        ACTION RESULT
     ======================================================== */
+
+switch (action) {
+  case "correct": {
+    typingAudio.playKey();
+    break;
+  }
+
+    case "line-complete": {
+    typingAudio.playStamp();
+    break;
+  }
+
+  case "error":
+  case "survived":
+  case "dead": {
+    typingAudio.playError();
+    break;
+  }
+}
+
     switch (action) {
+
       case "error": {
-        /**
-         * El error queda registrado visualmente.
-         *
-         * Guardamos la posición ANTES de que
-         * RunCoordinator modifique el estado.
-         */
-        errorParagraph = paragraph;
-        errorLine = line;
-        errorCharacter = character;
-        displayedErrors = run.errors;
-        message.textContent = "ERROR.";
-        break;
-      }
+  errorParagraph = paragraph;
+  errorLine = line;
+  errorCharacter = character;
+
+  beginRollbackVisual(character);
+
+  displayedErrors = run.errors;
+
+  triggerErrorImpact();
+
+  message.textContent = "ERROR.";
+  break;
+}
+
       case "correct": {
         /**
          * Si el jugador corrige exactamente
@@ -838,6 +1096,8 @@ function syncErrorCounter(): void {
       }
 
       case "survived": {
+  beginRollbackVisual(character);
+  triggerErrorImpact();
   errorParagraph = null;
   errorLine = null;
   errorCharacter = null;
@@ -863,6 +1123,8 @@ function syncErrorCounter(): void {
 }
 
 case "dead": {
+  beginRollbackVisual(character);
+  triggerErrorImpact();
   displayedErrors = 3;
   updateErrorCounter();
 
@@ -889,6 +1151,8 @@ case "paragraph-complete": {
   errorCharacter = null;
 
   resetRevolver();
+
+  typingAudio.playCheckpoint();
 
   message.textContent =
     "CHECKPOINT.";
@@ -940,10 +1204,12 @@ case "paragraph-complete": {
   /* ------------------------------------------------------------
      GAME LOOP
   ------------------------------------------------------------ */
+
   const gameLoop = new GameLoop((deltaTime) => {
-    coordinator.update(run, deltaTime);
-    updateUI();
-  });
+  coordinator.update(run, deltaTime);
+  updateRollback(deltaTime);
+  updateUI();
+});
 
   /* ------------------------------------------------------------
      INPUT
@@ -972,6 +1238,8 @@ game.focus();
   gameLoop.start();
   console.log("[Scribe] Game loop started");
 }
+
+
 
 /* ============================================================
    AUTO INITIALIZATION

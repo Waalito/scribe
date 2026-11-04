@@ -2,13 +2,131 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Scribe - juego web de narrativa inmersiva" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <meta
+      name="description"
+      content="Scribe - juego web de narrativa inmersiva"
+    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" />
     <title>Scribe</title>
   </head>
+
   <body>
-    <slot />
+    <div id="scene-layer">
+      <slot />
+    </div>
+
+    <div
+      id="sensory-layer"
+      aria-hidden="true"
+    ></div>
   </body>
 </html>
+
+<style>
+  #scene-layer {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+  }
+
+  #sensory-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  /*
+   * IMPACTO SOBRE LA ESCENA
+   */
+
+  :global(.scene-impact-active) {
+    animation:
+      sceneImpact
+      180ms
+      cubic-bezier(0.1, 0.9, 0.2, 1);
+  }
+
+  @keyframes sceneImpact {
+    0% {
+      transform: translate(0, 0) scale(1);
+      filter: blur(0);
+    }
+
+    15% {
+      transform: translate(-2px, 1px) scale(1.005);
+      filter: blur(2px);
+    }
+
+    35% {
+      transform: translate(2px, -1px) scale(0.998);
+      filter: blur(1.2px);
+    }
+
+    55% {
+      transform: translate(-1px, 1px) scale(1.002);
+      filter: blur(0.6px);
+    }
+
+    75% {
+      transform: translate(1px, 0) scale(1);
+      filter: blur(0.2px);
+    }
+
+    100% {
+      transform: translate(0, 0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  /*
+   * IMPACTO SENSORIAL
+   */
+
+  :global(.error-impact) {
+    position: absolute;
+    inset: 0;
+
+    background: rgba(207, 207, 207, 0.219);
+
+    opacity: 0;
+
+    animation:
+      errorImpact
+      180ms
+      cubic-bezier(0.1, 0.9, 0.2, 1)
+      forwards;
+  }
+
+  @keyframes errorImpact {
+    0% {
+      opacity: 0;
+    }
+
+    15% {
+      opacity: 1;
+    }
+
+    35% {
+      opacity: 0.75;
+    }
+
+    55% {
+      opacity: 0.45;
+    }
+
+    75% {
+      opacity: 0.2;
+    }
+
+    100% {
+      opacity: 0;
+    }
+  }
+</style>
