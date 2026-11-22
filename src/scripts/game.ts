@@ -2,6 +2,7 @@ import type { DocumentContent } from "../types/document";
 import { DocumentSystem } from "../systems/document/DocumentSystem";
 import { RunCoordinator } from "../systems/run/RunCoordinator";
 import { GameLoop } from "../systems/core/GameLoop";
+import { DocumentLibrary } from "../systems/document/DocumentLibrary";
 
 import { TypingAudio } from "../systems/audio/TypingAudio";
 
@@ -102,6 +103,9 @@ export function initializeGame(): void {
   const message = document.getElementById("game-message");
   const deathScreen = document.getElementById("death-screen");
   const completionScreen = document.getElementById("completion-screen");
+  const collectionCompleteScreen = document.getElementById(
+  "collection-complete-screen",
+);
 
   const revolver = document.querySelector('#revolver');
   const errorCounter = document.getElementById("error-counter");
@@ -124,7 +128,8 @@ if (
   !(lastAction instanceof HTMLElement) ||
   !(message instanceof HTMLElement) ||
   !(deathScreen instanceof HTMLElement) ||
-  !(completionScreen instanceof HTMLElement)
+  !(completionScreen instanceof HTMLElement) ||
+  !(collectionCompleteScreen instanceof HTMLElement)
 ) {
   throw new Error("[Scribe] Game UI elements not found");
 }
@@ -149,12 +154,18 @@ if (
   /* ==========================================================
      STATE & SYSTEMS
   ========================================================== */
-  const documentSystem = new DocumentSystem();
-  const coordinator = new RunCoordinator(300);
-  const typingAudio = new TypingAudio();
+const documentSystem = new DocumentSystem();
+const documentLibrary = new DocumentLibrary();
+
+const coordinator = new RunCoordinator(300);
+const typingAudio = new TypingAudio();
 
   let currentDocument: DocumentContent;
   let run: ReturnType<RunCoordinator["createRun"]>;
+    // Estado de la colección
+  let collectionComplete = false;
+  let showCollectionCompleteScreen = false;
+
   let flatLines: FlatLine[] = [];
 
 /* ============================================================
@@ -204,36 +215,92 @@ let renderedCheckpointProgress = -1;
 let revolverAnimating = false;
 const REVOLVER_SPIN_DURATION = 3000;
 
+/*NEW THIS THREE.JS SCENE STUDY GAME*/
+
+let deathPhase: "idle" | "playing" | "done" = "idle";
+let deathFallback: number | null = null;
+const DEATH_FALLBACK_MS = 8000;
+
+function finishDeathSequence(): void {
+  if (deathPhase !== "playing") return;
+
+  deathPhase = "done";
+
+  if (deathFallback !== null) {
+    window.clearTimeout(deathFallback);
+    deathFallback = null;
+  }
+
+  updateEndScreens();
+}
+
+window.addEventListener("scene:death-complete", finishDeathSequence);
+
+/*NEW THIS THREE.JS SCENE STUDY GAME*/
+
   /* ==========================================================
      SCREEN RUN & DEAD 
   ========================================================== */
 
 function updateEndScreens(): void {
-  const isDead =
-    run.status === "dead" &&
-    !revolverAnimating;
+  //const isDead =
+  //  run.status === "dead" &&
+  // !revolverAnimating;
 
-  const isCompleted =
-    run.status === "completed";
+  /*NEW THIS THREE.JS SCENE STUDY GAME*/
+
+  const readyForDeath = run.status === "dead" && !revolverAnimating;
+
+// Arranca la secuencia una sola vez, cuando el revólver ya terminó.
+if (readyForDeath && deathPhase === "idle") {
+  deathPhase = "playing";
+  window.dispatchEvent(new CustomEvent("scene:play-death"));
+
+  // Si la escena no carga, la pantalla de muerte sale igual.
+  deathFallback = window.setTimeout(finishDeathSequence, DEATH_FALLBACK_MS);
+}
+
+const isDead = readyForDeath && deathPhase === "done";
+
+ /*NEW THIS THREE.JS SCENE STUDY GAME*/
+
+const isCompleted =
+  run.status === "completed" &&
+  !showCollectionCompleteScreen;
+
+const isCollectionComplete =
+  run.status === "completed" &&
+  collectionComplete &&
+  showCollectionCompleteScreen;
 
   deathScreen.classList.toggle(
     "is-visible",
-    isDead
+    isDead,
   );
 
   completionScreen.classList.toggle(
     "is-visible",
-    isCompleted
+    isCompleted,
+  );
+
+  collectionCompleteScreen?.classList.toggle(
+    "is-visible",
+    isCollectionComplete,
   );
 
   deathScreen.setAttribute(
     "aria-hidden",
-    String(!isDead)
+    String(!isDead),
   );
 
   completionScreen.setAttribute(
     "aria-hidden",
-    String(!isCompleted)
+    String(!isCompleted),
+  );
+
+  collectionCompleteScreen?.setAttribute(
+    "aria-hidden",
+    String(!isCollectionComplete),
   );
 }
 
@@ -389,15 +456,47 @@ function resetRevolver(): void {
   /**
    * Selecciona un documento evitando repetir inmediatamente el documento anterior.
    */
-  function selectDocument(previousDocument?: DocumentContent): DocumentContent {
-    if (documents.length === 1) {
-      return documents[0];
-    }
-    const availableDocuments = previousDocument
-      ? documents.filter((doc) => doc.metadata.id !== previousDocument.metadata.id)
-      : documents;
-    return documentSystem.selectRandomDocument(availableDocuments);
+ function selectDocument(
+  previousDocument?: DocumentContent,
+): DocumentContent | null {
+  const availableDocuments = documentSystem.getAvailableDocuments(
+    documents,
+    documentLibrary.getPreservedDocumentIds(),
+  );
+
+  if (availableDocuments.length === 0) {
+    return null;
   }
+
+  if (availableDocuments.length === 1) {
+    return availableDocuments[0];
+  }
+
+  const documentsWithoutPrevious = previousDocument
+    ? availableDocuments.filter(
+        (doc) => doc.metadata.id !== previousDocument.metadata.id,
+      )
+    : availableDocuments;
+
+  return documentSystem.selectRandomDocument(
+    documentsWithoutPrevious.length > 0
+      ? documentsWithoutPrevious
+      : availableDocuments,
+  );
+}
+
+function isCollectionComplete(): boolean {
+  if (documents.length === 0) {
+    return false;
+  }
+
+  const availableDocuments = documentSystem.getAvailableDocuments(
+    documents,
+    documentLibrary.getPreservedDocumentIds(),
+  );
+
+  return availableDocuments.length === 0;
+}
 
   /**
    * Devuelve la posición lineal de la línea actual.
@@ -944,9 +1043,27 @@ function updateRollback(deltaTime: number): void {
   /* ==========================================================
      RESTART RUN
   ========================================================== */
-  function restartRun(): void {
-    const previousDocument = currentDocument;
-    currentDocument = selectDocument(previousDocument);
+function restartRun(): void {
+  if (isCollectionComplete()) {
+    message.textContent = "COLECCIÓN COMPLETA.";
+
+    console.log("[Scribe] All documents have been preserved:", {
+      totalDocuments: documents.length,
+      preservedDocuments: documentLibrary.size,
+    });
+
+    return;
+  }
+
+  const previousDocument = currentDocument;
+  const nextDocument = selectDocument(previousDocument);
+
+  if (!nextDocument) {
+    console.error("[Scribe] No documents available for a new run.");
+    return;
+  }
+
+  currentDocument = nextDocument;
 
       if (errorCounterTimeout !== null) {
     window.clearTimeout(errorCounterTimeout);
@@ -969,6 +1086,20 @@ function updateRollback(deltaTime: number): void {
     /* --------------------------------------------------------
        CREATE NEW RUN
     -------------------------------------------------------- */
+    /*NEW THIS THREE.JS SCENE STUDY GAME*/
+
+    deathPhase = "idle";
+
+if (deathFallback !== null) {
+  window.clearTimeout(deathFallback);
+  deathFallback = null;
+}
+
+window.dispatchEvent(new CustomEvent("scene:reset"));
+game.focus();
+
+/*NEW THIS THREE.JS SCENE STUDY GAME*/
+
     run = coordinator.createRun(currentDocument);
     resetRevolver();
     initializeDocument(currentDocument);
@@ -1160,20 +1291,61 @@ case "paragraph-complete": {
   break;
 }
 
-      case "completed": {
-        /**
-         * Documento completado.
-         *
-         * Limpiamos cualquier marca temporal
-         * porque el documento terminó.
-         */
-        errorParagraph = null;
-        errorLine = null;
-        errorCharacter = null;
-        message.textContent =
-          "DOCUMENTO COMPLETADO. Presiona R para una nueva run.";
-        break;
-      }
+
+
+case "completed": {
+  errorParagraph = null;
+  errorLine = null;
+  errorCharacter = null;
+
+  const canPreserve = documentSystem.canPreserveDocument(
+    currentDocument,
+    run.totalErrors,
+  );
+
+  if (canPreserve) {
+    documentLibrary.preserveDocument(currentDocument);
+
+    console.log("[Scribe] Document preserved:", {
+      id: currentDocument.metadata.id,
+      category: currentDocument.metadata.category,
+      totalErrors: run.totalErrors,
+      librarySize: documentLibrary.size,
+    });
+  } else {
+    console.log("[Scribe] Document not preserved:", {
+      id: currentDocument.metadata.id,
+      category: currentDocument.metadata.category,
+      totalErrors: run.totalErrors,
+    });
+  }
+
+  collectionComplete = isCollectionComplete();
+
+  if (collectionComplete) {
+    console.log("[Scribe] Collection completed:", {
+      totalDocuments: documents.length,
+      preservedDocuments: documentLibrary.size,
+    });
+
+    setTimeout(() => {
+      showCollectionCompleteScreen = true;
+      updateUI();
+    }, 2500);
+  } else {
+    console.log("[Scribe] Collection incomplete:", {
+      availableDocuments: documentSystem.getAvailableDocuments(
+        documents,
+        documentLibrary.getPreservedDocumentIds(),
+      ).length,
+      preservedDocuments: documentLibrary.size,
+    });
+  }
+
+  break;
+}
+
+
     }
 
     /* --------------------------------------------------------
@@ -1192,11 +1364,38 @@ case "paragraph-complete": {
      GAME LOOP & STARTUP
   ============================================================ */
 
-  /* ------------------------------------------------------------
-     INITIAL DOCUMENT
-  ------------------------------------------------------------ */
-  currentDocument = selectDocument();
-  run = coordinator.createRun(currentDocument);
+/* ------------------------------------------------------------
+   INITIAL DOCUMENT
+------------------------------------------------------------ */
+const initialDocument = selectDocument();
+
+if (!initialDocument) {
+  if (isCollectionComplete()) {
+    collectionComplete = true;
+    showCollectionCompleteScreen = true;
+
+    message.textContent = "COLECCIÓN COMPLETA.";
+
+    collectionCompleteScreen.classList.add("is-visible");
+    collectionCompleteScreen.setAttribute(
+      "aria-hidden",
+      "false",
+    );
+
+    console.log("[Scribe] Collection already completed:", {
+      totalDocuments: documents.length,
+      preservedDocuments: documentLibrary.size,
+    });
+
+    return;
+  }
+
+  throw new Error("[Scribe] No documents available to start the game.");
+}
+
+currentDocument = initialDocument;
+run = coordinator.createRun(currentDocument);
+
   console.log("[Scribe] Run created:", run);
   console.log("[Scribe] Selected document:", currentDocument.metadata.id);
   initializeDocument(currentDocument);

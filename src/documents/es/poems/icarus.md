@@ -9,8 +9,4 @@ tags:
   - caida
 ---
 
-Ícaro asciende hacia el cielo.
-El sol calienta sus alas.
-
-Ícaro continúa volando.
-Las alas comienzan a caer.
+hola

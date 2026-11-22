@@ -1,0 +1,1403 @@
+---
+/**
+ * LIBRARY SCENE — salón de estudio en Three.js
+ *
+ * Distribución:
+ *
+ *   - El escritorio está contra la pared del fondo, con una ventana
+ *     (luna roja) encima y estanterías a ambos lados y en las paredes
+ *     laterales.
+ *   - Detrás de la silla se abre la sala: alfombra, mesa de lectura,
+ *     sillones y una lámpara de techo.
+ *
+ * Modos:
+ *
+ *   - seated:  vista en primera persona, cenital, asomado sobre el
+ *              escritorio. La imagen se desplaza a la derecha para que
+ *              la interfaz de la biblioteca ocupe la izquierda.
+ *   - walking: el jugador se levanta, da un paso atrás, la interfaz
+ *              desaparece y puede caminar con WASD y el ratón.
+ *
+ * Contrato con la página (sin acoplamiento directo):
+ *
+ *   - Escucha en window:  "library:toggle"  → alterna sentado / de pie.
+ *   - Emite en window:    "library:mode"    → detail: "seated" | "walking".
+ *   - Marca el <html>:    data-library-mode="seated" | "walking"
+ *                         data-library-scene="on" | "off"
+ *
+ * Teclas: E = levantarse / sentarse (solo cerca de la silla),
+ * WASD = caminar, ESC = soltar el cursor (un clic lo recaptura).
+ *
+ * Todo el contenido es procedural: no hay assets externos. El prop
+ * opcional modelUrl permite colocar un .glb sobre el escritorio.
+ */
+
+interface Props {
+  /** URL opcional de un .glb para colocar sobre el escritorio. */
+  modelUrl?: string;
+}
+
+const { modelUrl = "" } = Astro.props;
+---
+
+<div
+  id="library-scene"
+  class="library-scene"
+  data-model-url={modelUrl}
+  aria-hidden="true"
+>
+</div>
+
+<div id="library-walk-hud" class="library-walk-hud" hidden>
+  <p class="library-walk-hint">
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk</span>
+    <span id="library-walk-sit"><kbd>E</kbd> Sit</span>
+    <span><kbd>ESC</kbd> Cursor</span>
+  </p>
+
+  <button
+    id="library-walk-resume"
+    class="library-walk-resume"
+    type="button"
+    hidden
+  >
+    Click to look around
+  </button>
+</div>
+
+<script>
+  import * as THREE from "three";
+  import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
+
+  /* ==========================================================
+   * AJUSTES
+   *
+   * Todo lo que conviene tocar al afinar el aspecto está aquí.
+   * ========================================================== */
+
+  const LIGHT = {
+    /** Exposición general del renderizado. */
+    exposure: 1.3,
+    /** Luz ambiente (relleno general). */
+    ambient: 1.2,
+    /** Luz hemisférica (techo frío / suelo cálido). */
+    hemisphere: 0.9,
+    /** Lámpara del escritorio. */
+    lamp: 7,
+    /** Luz rojiza de la luna, sobre el escritorio. */
+    moon: 3,
+    /** Lámpara de techo: relleno cálido de la sala. */
+    room: 12,
+  };
+
+  const ROOM = {
+    minX: -5.1,
+    maxX: 5.1,
+    minZ: -6,
+    maxZ: 8,
+    height: 4.4,
+  };
+
+  /*
+   * Vistas del jugador sentado. Cambia SEAT_VIEW para probar otra.
+   *
+   * - pitch:     inclinación (negativo = mira hacia abajo).
+   * - lensShift: cuánto se desplaza la imagen a la derecha, como
+   *              fracción del ancho, para dejar sitio a la interfaz.
+   */
+  const SEAT_VIEWS = {
+    /* Cenital: asomado sobre el escritorio, mirando hacia abajo. */
+    topdown: {
+      position: { x: 0, y: 1.6, z: -4.95 },
+      pitch: -1.12,
+      yaw: 0,
+      lensShift: 0.2,
+    },
+    /* Más horizontal: sentado frente a la mesa. */
+    desk: {
+      position: { x: 0, y: 1.2, z: -4.3 },
+      pitch: -0.4,
+      yaw: 0,
+      lensShift: 0.2,
+    },
+  };
+
+  const SEAT_VIEW = SEAT_VIEWS.topdown;
+
+  /* Dónde queda el jugador al levantarse: un paso detrás de la silla. */
+  const STAND_SPOT = { x: 0, y: 1.65, z: -3.3 };
+
+  /* Distancia máxima al punto de pie para poder volver a sentarse. */
+  const SIT_RANGE = 2.2;
+
+  const DESK = { x: 0, z: -5.4, width: 2.4, depth: 0.9 };
+  const CHAIR = { x: 0, z: -4.35 };
+
+  const PLAYER_RADIUS = 0.3;
+  const WALK_ACCELERATION = 30;
+  const STAND_UP_SECONDS = 0.7;
+
+  /* Por debajo de este ancho la interfaz ocupa toda la pantalla. */
+  const WIDE_LAYOUT_MIN_WIDTH = 860;
+
+  /* ==========================================================
+   * TIPOS
+   * ========================================================== */
+
+  type Mode = "seated" | "walking";
+
+  type Rect = {
+    minX: number;
+    maxX: number;
+    minZ: number;
+    maxZ: number;
+  };
+
+  /* ==========================================================
+   * UTILIDADES
+   * ========================================================== */
+
+  function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  /* Interpola ángulos por el camino corto. */
+  function lerpAngle(from: number, to: number, t: number): number {
+    const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+
+    return from + delta * t;
+  }
+
+  /* Generador pseudoaleatorio con semilla: el reparto no cambia. */
+  function createRandom(seed: number): () => number {
+    let state = seed >>> 0;
+
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+
+      let t = state;
+
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ==========================================================
+   * ESCENA
+   * ========================================================== */
+
+  function initLibraryScene(
+    container: HTMLElement,
+    hud: HTMLElement,
+    resume: HTMLElement,
+    sitHint: HTMLElement | null,
+  ): void {
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    /* ------------------------------------------------------
+     * Renderer, escena y cámara
+     * ------------------------------------------------------ */
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = LIGHT.exposure;
+
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+
+    scene.background = new THREE.Color(0x0b0e11);
+    scene.fog = new THREE.FogExp2(0x0b0e11, 0.05);
+
+    const camera = new THREE.PerspectiveCamera(
+      65,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      60,
+    );
+
+    camera.rotation.order = "YXZ";
+    camera.position.set(
+      SEAT_VIEW.position.x,
+      SEAT_VIEW.position.y,
+      SEAT_VIEW.position.z,
+    );
+    camera.rotation.set(SEAT_VIEW.pitch, SEAT_VIEW.yaw, 0);
+
+    /* ------------------------------------------------------
+     * Materiales y piezas básicas
+     * ------------------------------------------------------ */
+
+    const material = (color: number, roughness = 0.85) =>
+      new THREE.MeshStandardMaterial({ color, roughness });
+
+    const wood = material(0x6b5242);
+    const darkWood = material(0x4a3a30);
+    const paper = material(0xd9cbb4, 0.95);
+    const leather = material(0x5a2f2a, 0.7);
+
+    function addBox(
+      w: number,
+      h: number,
+      d: number,
+      mat: THREE.Material,
+      x: number,
+      y: number,
+      z: number,
+      parent: THREE.Object3D = scene,
+    ): THREE.Mesh {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+
+      mesh.position.set(x, y, z);
+      parent.add(mesh);
+
+      return mesh;
+    }
+
+    /* ------------------------------------------------------
+     * Colisiones: rectángulos en planta (x, z)
+     * ------------------------------------------------------ */
+
+    const obstacles: Rect[] = [];
+
+    function addObstacle(
+      cx: number,
+      cz: number,
+      w: number,
+      d: number,
+    ): void {
+      obstacles.push({
+        minX: cx - w / 2,
+        maxX: cx + w / 2,
+        minZ: cz - d / 2,
+        maxZ: cz + d / 2,
+      });
+    }
+
+    function isBlocked(x: number, z: number): boolean {
+      return obstacles.some(
+        (rect) =>
+          x > rect.minX - PLAYER_RADIUS &&
+          x < rect.maxX + PLAYER_RADIUS &&
+          z > rect.minZ - PLAYER_RADIUS &&
+          z < rect.maxZ + PLAYER_RADIUS,
+      );
+    }
+
+    /* ------------------------------------------------------
+     * Iluminación
+     * ------------------------------------------------------ */
+
+    scene.add(new THREE.AmbientLight(0xcfc4b0, LIGHT.ambient));
+    scene.add(
+      new THREE.HemisphereLight(0x4a5560, 0x2a1a14, LIGHT.hemisphere),
+    );
+
+    /* Lámpara del escritorio (esquina derecha del fondo). */
+    const lampX = DESK.x + 0.9;
+    const lampZ = DESK.z - 0.15;
+    const DESK_TOP = 0.79;
+
+    const lampLight = new THREE.PointLight(0xe6953b, LIGHT.lamp, 9, 2);
+
+    lampLight.position.set(lampX, DESK_TOP + 0.46, lampZ);
+    scene.add(lampLight);
+
+    /* Luz de la luna, sobre el escritorio, delante de la ventana. */
+    const moonLight = new THREE.PointLight(0x8a1c1c, LIGHT.moon, 10, 2);
+
+    moonLight.position.set(DESK.x, 2.6, ROOM.minZ + 0.8);
+    scene.add(moonLight);
+
+    /* Lámpara de techo: relleno cálido para la sala abierta. */
+    const roomLight = new THREE.PointLight(0xe6953b, LIGHT.room, 16, 2);
+
+    roomLight.position.set(0, ROOM.height - 0.7, 1.8);
+    scene.add(roomLight);
+
+    /* ------------------------------------------------------
+     * Sala: suelo, techo, paredes y alfombras
+     * ------------------------------------------------------ */
+
+    const roomWidth = ROOM.maxX - ROOM.minX;
+    const roomDepth = ROOM.maxZ - ROOM.minZ;
+    const centerZ = (ROOM.minZ + ROOM.maxZ) / 2;
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(roomWidth, roomDepth),
+      material(0x3d312b, 0.9),
+    );
+
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(0, 0, centerZ);
+    scene.add(floor);
+
+    const ceiling = new THREE.Mesh(
+      new THREE.PlaneGeometry(roomWidth, roomDepth),
+      material(0x2a2220, 1),
+    );
+
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set(0, ROOM.height, centerZ);
+    scene.add(ceiling);
+
+    const wallMaterial = material(0x5a4a44, 0.9);
+
+    function addWall(
+      width: number,
+      x: number,
+      z: number,
+      rotationY: number,
+    ): void {
+      const wall = new THREE.Mesh(
+        new THREE.PlaneGeometry(width, ROOM.height),
+        wallMaterial,
+      );
+
+      wall.position.set(x, ROOM.height / 2, z);
+      wall.rotation.y = rotationY;
+      scene.add(wall);
+    }
+
+    addWall(roomWidth, 0, ROOM.minZ, 0);
+    addWall(roomWidth, 0, ROOM.maxZ, Math.PI);
+    addWall(roomDepth, ROOM.minX, centerZ, Math.PI / 2);
+    addWall(roomDepth, ROOM.maxX, centerZ, -Math.PI / 2);
+
+    const addRug = (
+      width: number,
+      depth: number,
+      x: number,
+      z: number,
+      color: number,
+    ) => {
+      const rug = new THREE.Mesh(
+        new THREE.PlaneGeometry(width, depth),
+        material(color, 1),
+      );
+
+      rug.rotation.x = -Math.PI / 2;
+      rug.position.set(x, 0.005, z);
+      scene.add(rug);
+    };
+
+    /* Bajo el escritorio y en el centro de la sala. */
+    addRug(3.4, 2.6, DESK.x, -4.6, 0x4a2226);
+    addRug(5.2, 4.2, 0, 2.2, 0x3a2a2c);
+
+    /* ------------------------------------------------------
+     * Estanterías con libros (un solo InstancedMesh)
+     * ------------------------------------------------------ */
+
+    const random = createRandom(1313);
+
+    const BOOK_PALETTE = [
+      0x6a2d30, 0x4f5a45, 0x5c4a38, 0x7a6444, 0x3a4756, 0x86704f,
+      0x5a3344,
+    ];
+
+    const bookMatrices: THREE.Matrix4[] = [];
+    const bookColors: THREE.Color[] = [];
+
+    const SHELF = { width: 1.8, height: 3.2, depth: 0.42 };
+    const SHELF_LEVELS = 5;
+
+    function addShelf(cx: number, cz: number, rotationY: number): void {
+      const { width, height, depth } = SHELF;
+
+      const group = new THREE.Group();
+
+      group.position.set(cx, 0, cz);
+      group.rotation.y = rotationY;
+      scene.add(group);
+
+      const part = (
+        w: number,
+        h: number,
+        d: number,
+        x: number,
+        y: number,
+        z: number,
+      ) => {
+        addBox(w, h, d, darkWood, x, y, z, group);
+      };
+
+      /* Laterales y fondo. */
+      part(0.05, height, depth, -width / 2, height / 2, 0);
+      part(0.05, height, depth, width / 2, height / 2, 0);
+      part(width, height, 0.02, 0, height / 2, -depth / 2 + 0.01);
+
+      /* Baldas. */
+      for (let level = 0; level <= SHELF_LEVELS; level += 1) {
+        part(width, 0.04, depth, 0, 0.1 + level * 0.6, 0);
+      }
+
+      /* Libros, en coordenadas de mundo. */
+      const rotation = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        rotationY,
+      );
+
+      for (let level = 0; level < SHELF_LEVELS; level += 1) {
+        const baseY = 0.1 + level * 0.6 + 0.02;
+
+        let x = -width / 2 + 0.08;
+
+        while (x < width / 2 - 0.1) {
+          /* Huecos ocasionales entre libros. */
+          if (random() < 0.12) {
+            x += 0.08;
+            continue;
+          }
+
+          const bookWidth = 0.03 + random() * 0.04;
+          const bookHeight = 0.3 + random() * 0.2;
+          const bookDepth = 0.24 + random() * 0.1;
+
+          const position = new THREE.Vector3(
+            x + bookWidth / 2,
+            baseY + bookHeight / 2,
+            0.02,
+          )
+            .applyQuaternion(rotation)
+            .add(new THREE.Vector3(cx, 0, cz));
+
+          bookMatrices.push(
+            new THREE.Matrix4().compose(
+              position,
+              rotation,
+              new THREE.Vector3(bookWidth, bookHeight, bookDepth),
+            ),
+          );
+
+          bookColors.push(
+            new THREE.Color(
+              BOOK_PALETTE[Math.floor(random() * BOOK_PALETTE.length)],
+            ),
+          );
+
+          x += bookWidth + 0.004;
+        }
+      }
+
+      /* Colisión: el rectángulo gira con la estantería. */
+      const sideways = Math.abs(Math.sin(rotationY)) > 0.5;
+
+      addObstacle(
+        cx,
+        cz,
+        sideways ? depth : width,
+        sideways ? width : depth,
+      );
+    }
+
+    const shelfBack = ROOM.minZ + SHELF.depth / 2;
+    const shelfLeft = ROOM.minX + SHELF.depth / 2;
+    const shelfRight = ROOM.maxX - SHELF.depth / 2;
+
+    /* Pared del fondo: a ambos lados del escritorio. */
+    [-4.2, -2.4, 2.4, 4.2].forEach((x) => addShelf(x, shelfBack, 0));
+
+    /* Paredes laterales: rodean el escritorio y siguen sala adentro. */
+    [-4.5, -2.7, -0.9, 0.9, 2.7].forEach((z) =>
+      addShelf(shelfLeft, z, Math.PI / 2),
+    );
+    [-4.5, -2.7, -0.9, 0.9].forEach((z) =>
+      addShelf(shelfRight, z, -Math.PI / 2),
+    );
+
+    const books = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      material(0xffffff, 0.8),
+      bookMatrices.length,
+    );
+
+    bookMatrices.forEach((matrix, index) => {
+      books.setMatrixAt(index, matrix);
+      books.setColorAt(index, bookColors[index]);
+    });
+
+    scene.add(books);
+
+    /* ------------------------------------------------------
+     * Ventana con la luna roja, sobre el escritorio
+     * ------------------------------------------------------ */
+
+    function makeWindowTexture(): THREE.CanvasTexture {
+      const canvas = document.createElement("canvas");
+
+      canvas.width = 256;
+      canvas.height = 320;
+
+      const ctx = canvas.getContext("2d");
+
+      if (ctx) {
+        const sky = ctx.createLinearGradient(0, 0, 0, 320);
+
+        sky.addColorStop(0, "#12080a");
+        sky.addColorStop(1, "#3a1417");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, 256, 320);
+
+        const glow = ctx.createRadialGradient(128, 110, 6, 128, 110, 110);
+
+        glow.addColorStop(0, "rgba(168, 50, 47, 0.9)");
+        glow.addColorStop(0.25, "rgba(138, 28, 28, 0.55)");
+        glow.addColorStop(1, "rgba(138, 28, 28, 0)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, 256, 320);
+
+        ctx.fillStyle = "#8a1c1c";
+        ctx.beginPath();
+        ctx.arc(128, 110, 38, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+
+      texture.colorSpace = THREE.SRGBColorSpace;
+
+      return texture;
+    }
+
+    const windowX = DESK.x;
+    const windowY = 2.55;
+    const windowZ = ROOM.minZ + 0.02;
+    const windowW = 2.2;
+    const windowH = 2.0;
+
+    const windowPane = new THREE.Mesh(
+      new THREE.PlaneGeometry(windowW, windowH),
+      new THREE.MeshBasicMaterial({ map: makeWindowTexture() }),
+    );
+
+    windowPane.position.set(windowX, windowY, windowZ);
+    scene.add(windowPane);
+
+    /* Marco, travesaños y alféizar. */
+    const frameZ = windowZ + 0.03;
+
+    addBox(0.08, windowH + 0.16, 0.1, darkWood, windowX - windowW / 2 - 0.04, windowY, frameZ);
+    addBox(0.08, windowH + 0.16, 0.1, darkWood, windowX + windowW / 2 + 0.04, windowY, frameZ);
+    addBox(windowW + 0.16, 0.08, 0.1, darkWood, windowX, windowY + windowH / 2 + 0.04, frameZ);
+    addBox(windowW + 0.16, 0.08, 0.1, darkWood, windowX, windowY - windowH / 2 - 0.04, frameZ);
+    addBox(0.04, windowH, 0.06, darkWood, windowX, windowY, frameZ);
+    addBox(windowW, 0.04, 0.06, darkWood, windowX, windowY, frameZ);
+    addBox(windowW + 0.4, 0.06, 0.26, darkWood, windowX, windowY - windowH / 2 - 0.1, windowZ + 0.12);
+
+    /* ------------------------------------------------------
+     * Escritorio y todo lo que hay encima
+     * ------------------------------------------------------ */
+
+    addBox(DESK.width, 0.06, DESK.depth, wood, DESK.x, 0.76, DESK.z);
+
+    [-1, 1].forEach((sx) =>
+      [-1, 1].forEach((sz) =>
+        addBox(
+          0.07,
+          0.73,
+          0.07,
+          darkWood,
+          DESK.x + sx * (DESK.width / 2 - 0.08),
+          0.365,
+          DESK.z + sz * (DESK.depth / 2 - 0.08),
+        ),
+      ),
+    );
+
+    /* Panel trasero. */
+    addBox(
+      DESK.width - 0.2,
+      0.4,
+      0.03,
+      darkWood,
+      DESK.x,
+      0.5,
+      DESK.z - DESK.depth / 2 + 0.1,
+    );
+
+    addObstacle(DESK.x, DESK.z, DESK.width, DESK.depth);
+
+    /* Libro abierto, en el centro: es lo primero que se ve desde arriba. */
+    addBox(0.6, 0.016, 0.42, leather, DESK.x, DESK_TOP + 0.008, DESK.z + 0.05);
+
+    const pageLeft = addBox(0.26, 0.02, 0.36, paper, DESK.x - 0.14, DESK_TOP + 0.026, DESK.z + 0.05);
+    const pageRight = addBox(0.26, 0.02, 0.36, paper, DESK.x + 0.14, DESK_TOP + 0.026, DESK.z + 0.05);
+
+    pageLeft.rotation.y = 0.04;
+    pageRight.rotation.y = -0.03;
+
+    /* Papeles sueltos y pila. */
+    addBox(0.3, 0.05, 0.22, paper, DESK.x + 0.6, DESK_TOP + 0.025, DESK.z + 0.1).rotation.y = -0.2;
+    addBox(0.22, 0.004, 0.3, paper, DESK.x + 0.45, DESK_TOP + 0.052, DESK.z - 0.1).rotation.y = 0.35;
+    addBox(0.22, 0.004, 0.3, paper, DESK.x - 0.62, DESK_TOP + 0.002, DESK.z + 0.05).rotation.y = -0.5;
+
+    /* Tintero y pluma. */
+    const inkwell = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.045, 0.06, 16),
+      material(0x1a1514, 0.4),
+    );
+
+    inkwell.position.set(DESK.x - 0.7, DESK_TOP + 0.03, DESK.z - 0.25);
+    scene.add(inkwell);
+
+    const quill = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.004, 0.004, 0.28, 6),
+      paper,
+    );
+
+    quill.rotation.z = Math.PI / 2;
+    quill.rotation.y = 0.5;
+    quill.position.set(DESK.x - 0.55, DESK_TOP + 0.01, DESK.z - 0.1);
+    scene.add(quill);
+
+    /* Revólver (marcador de posición: cámbialo por el modelo de Blender). */
+    const revolver = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({
+      color: 0x3a3a3c,
+      metalness: 0.8,
+      roughness: 0.4,
+    });
+
+    const drum = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.035, 0.035, 0.06, 12),
+      metal,
+    );
+
+    drum.rotation.z = Math.PI / 2;
+    drum.position.set(0, 0.04, 0);
+    revolver.add(drum);
+
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.011, 0.011, 0.15, 8),
+      metal,
+    );
+
+    barrel.rotation.z = Math.PI / 2;
+    barrel.position.set(0.1, 0.045, 0);
+    revolver.add(barrel);
+
+    const grip = addBox(0.03, 0.08, 0.035, darkWood, -0.05, 0.0, 0, revolver);
+
+    grip.rotation.z = 0.35;
+
+    revolver.position.set(DESK.x - 0.5, DESK_TOP + 0.02, DESK.z + 0.32);
+    revolver.rotation.y = 0.6;
+    scene.add(revolver);
+
+    /* Lámpara. */
+    const lampBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.1, 0.03, 20),
+      darkWood,
+    );
+
+    lampBase.position.set(lampX, DESK_TOP + 0.015, lampZ);
+    scene.add(lampBase);
+
+    const lampStem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 0.36, 8),
+      darkWood,
+    );
+
+    lampStem.position.set(lampX, DESK_TOP + 0.2, lampZ);
+    scene.add(lampStem);
+
+    const lampShade = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.13, 0.16, 20, 1, true),
+      new THREE.MeshStandardMaterial({
+        color: 0x3a2a1a,
+        emissive: 0xe6953b,
+        emissiveIntensity: 0.45,
+        roughness: 0.6,
+        side: THREE.DoubleSide,
+      }),
+    );
+
+    lampShade.position.set(lampX, DESK_TOP + 0.42, lampZ);
+    scene.add(lampShade);
+
+    const lampBulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.035, 12, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffd9a0 }),
+    );
+
+    lampBulb.position.set(lampX, DESK_TOP + 0.4, lampZ);
+    scene.add(lampBulb);
+
+    /* ------------------------------------------------------
+     * Silla (no colisiona: el jugador se levanta desde ella)
+     * ------------------------------------------------------ */
+
+    addBox(0.5, 0.05, 0.5, darkWood, CHAIR.x, 0.45, CHAIR.z);
+    addBox(0.5, 0.7, 0.04, darkWood, CHAIR.x, 0.82, CHAIR.z + 0.23);
+
+    [-1, 1].forEach((sx) =>
+      [-1, 1].forEach((sz) =>
+        addBox(
+          0.04,
+          0.43,
+          0.04,
+          darkWood,
+          CHAIR.x + sx * 0.22,
+          0.215,
+          CHAIR.z + sz * 0.22,
+        ),
+      ),
+    );
+
+    /* ------------------------------------------------------
+     * Sala abierta: mesa de lectura, sillones y lámpara de techo
+     * ------------------------------------------------------ */
+
+    const TABLE = { x: 0, z: 2.2, width: 3.0, depth: 1.0 };
+
+    addBox(TABLE.width, 0.08, TABLE.depth, wood, TABLE.x, 0.76, TABLE.z);
+
+    [-1, 1].forEach((sx) =>
+      [-1, 1].forEach((sz) =>
+        addBox(
+          0.09,
+          0.72,
+          0.09,
+          darkWood,
+          TABLE.x + sx * (TABLE.width / 2 - 0.1),
+          0.36,
+          TABLE.z + sz * (TABLE.depth / 2 - 0.1),
+        ),
+      ),
+    );
+
+    addObstacle(TABLE.x, TABLE.z, TABLE.width, TABLE.depth);
+
+    /* Pilas de libros sobre la mesa. */
+    [
+      { x: -0.9, h: 0.22, c: 0x6a2d30 },
+      { x: -0.2, h: 0.14, c: 0x4f5a45 },
+      { x: 0.7, h: 0.3, c: 0x5c4a38 },
+    ].forEach((stack) => {
+      addBox(
+        0.26,
+        stack.h,
+        0.2,
+        material(stack.c, 0.8),
+        TABLE.x + stack.x,
+        0.8 + stack.h / 2,
+        TABLE.z,
+      ).rotation.y = stack.x;
+    });
+
+    function addArmchair(x: number, z: number, rotationY: number): void {
+      const group = new THREE.Group();
+
+      group.position.set(x, 0, z);
+      group.rotation.y = rotationY;
+      scene.add(group);
+
+      addBox(0.9, 0.4, 0.9, leather, 0, 0.3, 0, group);
+      addBox(0.9, 0.7, 0.16, leather, 0, 0.75, -0.37, group);
+      addBox(0.14, 0.3, 0.9, leather, -0.5, 0.55, 0, group);
+      addBox(0.14, 0.3, 0.9, leather, 0.5, 0.55, 0, group);
+
+      addObstacle(x, z, 1.2, 1.2);
+    }
+
+    addArmchair(-3.2, 3.6, 0.5);
+    addArmchair(3.2, 3.6, -0.5);
+
+    /* Lámpara de techo. */
+    const chandelierY = ROOM.height - 0.7;
+
+    const chain = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.01, 0.01, 0.7, 6),
+      darkWood,
+    );
+
+    chain.position.set(0, ROOM.height - 0.35, 1.8);
+    scene.add(chain);
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.5, 0.02, 8, 32),
+      darkWood,
+    );
+
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(0, chandelierY, 1.8);
+    scene.add(ring);
+
+    [0, 1, 2, 3].forEach((i) => {
+      const flame = new THREE.Mesh(
+        new THREE.SphereGeometry(0.045, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0xffd9a0 }),
+      );
+
+      flame.position.set(
+        Math.cos((i * Math.PI) / 2) * 0.5,
+        chandelierY + 0.05,
+        1.8 + Math.sin((i * Math.PI) / 2) * 0.5,
+      );
+      scene.add(flame);
+    });
+
+    /* ------------------------------------------------------
+     * Polvo flotando en la luz
+     * ------------------------------------------------------ */
+
+    const DUST_COUNT = 220;
+    const dustBase = new Float32Array(DUST_COUNT * 3);
+    const dustPositions = new Float32Array(DUST_COUNT * 3);
+    const dustSeeds = new Float32Array(DUST_COUNT);
+
+    for (let i = 0; i < DUST_COUNT; i += 1) {
+      dustBase[i * 3] = -3 + random() * 6;
+      dustBase[i * 3 + 1] = 0.3 + random() * 3;
+      dustBase[i * 3 + 2] = -5.5 + random() * 11;
+      dustSeeds[i] = random() * Math.PI * 2;
+    }
+
+    dustPositions.set(dustBase);
+
+    const dustAttribute = new THREE.BufferAttribute(dustPositions, 3);
+    const dustGeometry = new THREE.BufferGeometry();
+
+    dustGeometry.setAttribute("position", dustAttribute);
+
+    scene.add(
+      new THREE.Points(
+        dustGeometry,
+        new THREE.PointsMaterial({
+          color: 0xd0bc89,
+          size: 0.025,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+        }),
+      ),
+    );
+
+    /* ------------------------------------------------------
+     * Asset opcional (.glb) sobre el escritorio
+     * ------------------------------------------------------ */
+
+    let asset: THREE.Object3D | null = null;
+    const modelUrl = container.dataset.modelUrl;
+
+    if (modelUrl) {
+      import("three/examples/jsm/loaders/GLTFLoader.js")
+        .then(({ GLTFLoader }) => {
+          new GLTFLoader().load(
+            modelUrl,
+            (gltf) => {
+              asset = gltf.scene;
+              asset.scale.setScalar(0.2);
+              asset.position.set(DESK.x + 0.3, DESK_TOP + 0.1, DESK.z - 0.2);
+              scene.add(asset);
+            },
+            undefined,
+            (error) => {
+              console.error("[Scribe] Library asset failed:", error);
+            },
+          );
+        })
+        .catch((error) => {
+          console.error("[Scribe] GLTFLoader unavailable:", error);
+        });
+    }
+
+    /* ------------------------------------------------------
+     * Controles y modos
+     * ------------------------------------------------------ */
+
+    const controls = new PointerLockControls(camera, renderer.domElement);
+
+    const keys = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false,
+    };
+
+    const velocity = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+
+    const parallax = { targetX: 0, targetY: 0, x: 0, y: 0 };
+
+    let mode: Mode = "seated";
+    let standTimer = 0;
+    let sitReady = false;
+
+    /* Desplazamiento lateral de la imagen (interfaz a la izquierda). */
+    const wideLayout = () => window.innerWidth > WIDE_LAYOUT_MIN_WIDTH;
+
+    let lensShift = wideLayout() ? SEAT_VIEW.lensShift : 0;
+    let viewOffsetActive = false;
+
+    function resetKeys(): void {
+      keys.forward = false;
+      keys.backward = false;
+      keys.left = false;
+      keys.right = false;
+      velocity.set(0, 0, 0);
+    }
+
+    function setMode(next: Mode): void {
+      mode = next;
+
+      document.documentElement.dataset.libraryMode = next;
+
+      hud.hidden = next !== "walking";
+      resume.hidden = next !== "walking" || controls.isLocked;
+
+      window.dispatchEvent(
+        new CustomEvent("library:mode", { detail: next }),
+      );
+    }
+
+    /* Solo se puede volver a sentar cerca de la silla. */
+    function canSit(): boolean {
+      return (
+        standTimer <= 0 &&
+        Math.hypot(
+          camera.position.x - STAND_SPOT.x,
+          camera.position.z - STAND_SPOT.z,
+        ) < SIT_RANGE
+      );
+    }
+
+    function stand(): void {
+      if (mode === "walking") {
+        return;
+      }
+
+      standTimer = STAND_UP_SECONDS;
+
+      setMode("walking");
+      controls.lock();
+    }
+
+    function sit(): void {
+      if (mode === "seated" || !canSit()) {
+        return;
+      }
+
+      resetKeys();
+
+      if (controls.isLocked) {
+        controls.unlock();
+      }
+
+      setMode("seated");
+    }
+
+    function toggle(): void {
+      if (mode === "seated") {
+        stand();
+      } else {
+        sit();
+      }
+    }
+
+    controls.addEventListener("lock", () => {
+      resume.hidden = true;
+    });
+
+    controls.addEventListener("unlock", () => {
+      resetKeys();
+
+      if (mode === "walking") {
+        resume.hidden = false;
+      }
+    });
+
+    /* Si el navegador rechaza capturar el cursor, se pide un clic. */
+    document.addEventListener("pointerlockerror", () => {
+      if (mode === "walking") {
+        resume.hidden = false;
+      }
+    });
+
+    resume.addEventListener("click", () => {
+      if (mode === "walking") {
+        controls.lock();
+      }
+    });
+
+    window.addEventListener("library:toggle", toggle);
+
+    const keyMap: Record<string, keyof typeof keys> = {
+      KeyW: "forward",
+      KeyS: "backward",
+      KeyA: "left",
+      KeyD: "right",
+    };
+
+    window.addEventListener("keydown", (event) => {
+      if (event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+
+      if (event.code === "KeyE") {
+        if (!event.repeat) {
+          toggle();
+        }
+
+        return;
+      }
+
+      const key = keyMap[event.code];
+
+      if (key && mode === "walking") {
+        keys[key] = true;
+      }
+    });
+
+    window.addEventListener("keyup", (event) => {
+      const key = keyMap[event.code];
+
+      if (key) {
+        keys[key] = false;
+      }
+    });
+
+    /* Movimiento suave de cámara según el ratón, solo sentado. */
+    window.addEventListener("pointermove", (event) => {
+      if (mode !== "seated" || reduceMotion) {
+        return;
+      }
+
+      parallax.targetX = -(event.clientX / window.innerWidth - 0.5) * 0.08;
+      parallax.targetY = -(event.clientY / window.innerHeight - 0.5) * 0.05;
+    });
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+    });
+
+    /* ------------------------------------------------------
+     * Movimiento de pie
+     * ------------------------------------------------------ */
+
+    function walk(dt: number): void {
+      velocity.x -= velocity.x * 10 * dt;
+      velocity.z -= velocity.z * 10 * dt;
+
+      direction.z = Number(keys.forward) - Number(keys.backward);
+      direction.x = Number(keys.right) - Number(keys.left);
+
+      if (direction.lengthSq() > 0) {
+        direction.normalize();
+      }
+
+      velocity.z -= direction.z * WALK_ACCELERATION * dt;
+      velocity.x -= direction.x * WALK_ACCELERATION * dt;
+
+      const previousX = camera.position.x;
+      const previousZ = camera.position.z;
+
+      controls.moveRight(-velocity.x * dt);
+      controls.moveForward(-velocity.z * dt);
+
+      let x = clamp(
+        camera.position.x,
+        ROOM.minX + PLAYER_RADIUS,
+        ROOM.maxX - PLAYER_RADIUS,
+      );
+
+      let z = clamp(
+        camera.position.z,
+        ROOM.minZ + PLAYER_RADIUS,
+        ROOM.maxZ - PLAYER_RADIUS,
+      );
+
+      /* Se resuelve cada eje por separado para poder deslizarse. */
+      if (isBlocked(x, previousZ)) {
+        x = previousX;
+      }
+
+      if (isBlocked(x, z)) {
+        z = previousZ;
+      }
+
+      camera.position.x = x;
+      camera.position.z = z;
+    }
+
+    /* ------------------------------------------------------
+     * Bucle de animación
+     * ------------------------------------------------------ */
+
+    let lastTime = performance.now();
+    let elapsed = 0;
+
+    function animate(now: number): void {
+      requestAnimationFrame(animate);
+
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+
+      lastTime = now;
+      elapsed += dt;
+
+      if (mode === "seated") {
+        /* Hacia la vista sentada, con un leve movimiento del ratón. */
+        const k = 1 - Math.exp(-8 * dt);
+
+        parallax.x += (parallax.targetX - parallax.x) * k;
+        parallax.y += (parallax.targetY - parallax.y) * k;
+
+        camera.position.x += (SEAT_VIEW.position.x - camera.position.x) * k;
+        camera.position.y += (SEAT_VIEW.position.y - camera.position.y) * k;
+        camera.position.z += (SEAT_VIEW.position.z - camera.position.z) * k;
+
+        camera.rotation.y = lerpAngle(
+          camera.rotation.y,
+          SEAT_VIEW.yaw + parallax.x,
+          k,
+        );
+
+        camera.rotation.x +=
+          (SEAT_VIEW.pitch + parallax.y - camera.rotation.x) * k;
+
+        camera.rotation.z = 0;
+      } else if (standTimer > 0) {
+        /* Al levantarse: un paso atrás y la mirada al frente. */
+        standTimer -= dt;
+
+        const k = 1 - Math.exp(-9 * dt);
+
+        camera.position.x += (STAND_SPOT.x - camera.position.x) * k;
+        camera.position.y += (STAND_SPOT.y - camera.position.y) * k;
+        camera.position.z += (STAND_SPOT.z - camera.position.z) * k;
+
+        camera.rotation.y = lerpAngle(camera.rotation.y, 0, k);
+        camera.rotation.x += (0 - camera.rotation.x) * k;
+        camera.rotation.z = 0;
+      } else {
+        camera.position.y +=
+          (STAND_SPOT.y - camera.position.y) * (1 - Math.exp(-6 * dt));
+
+        if (controls.isLocked) {
+          walk(dt);
+        }
+      }
+
+      /* Desplazamiento lateral de la imagen (solo sentado). */
+      const shiftTarget =
+        mode === "seated" && wideLayout() ? SEAT_VIEW.lensShift : 0;
+
+      lensShift += (shiftTarget - lensShift) * (1 - Math.exp(-6 * dt));
+
+      if (Math.abs(lensShift) > 0.0005) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        camera.setViewOffset(width, height, -lensShift * width, 0, width, height);
+        viewOffsetActive = true;
+      } else if (viewOffsetActive) {
+        camera.clearViewOffset();
+        viewOffsetActive = false;
+        lensShift = 0;
+      }
+
+      /* El aviso "E Sit" se atenúa si estás lejos de la silla. */
+      if (sitHint) {
+        const ready = mode === "walking" && canSit();
+
+        if (ready !== sitReady) {
+          sitReady = ready;
+          sitHint.classList.toggle("is-disabled", !ready);
+        }
+      }
+
+      if (!reduceMotion) {
+        lampLight.intensity =
+          LIGHT.lamp *
+          (1 +
+            Math.sin(elapsed * 7) * 0.02 +
+            Math.sin(elapsed * 13.7) * 0.015 +
+            Math.sin(elapsed * 3.1) * 0.03);
+
+        for (let i = 0; i < DUST_COUNT; i += 1) {
+          const seed = dustSeeds[i];
+
+          dustPositions[i * 3] =
+            dustBase[i * 3] + Math.sin(elapsed * 0.15 + seed) * 0.2;
+          dustPositions[i * 3 + 1] =
+            dustBase[i * 3 + 1] + Math.sin(elapsed * 0.1 + seed * 2) * 0.12;
+          dustPositions[i * 3 + 2] =
+            dustBase[i * 3 + 2] + Math.cos(elapsed * 0.12 + seed) * 0.2;
+        }
+
+        dustAttribute.needsUpdate = true;
+      }
+
+      if (asset) {
+        asset.rotation.y += 0.2 * dt;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    document.documentElement.dataset.libraryScene = "on";
+    setMode("seated");
+
+    requestAnimationFrame(animate);
+  }
+
+  /* ==========================================================
+   * ARRANQUE
+   * ========================================================== */
+
+  const sceneContainer = document.getElementById("library-scene");
+  const walkHud = document.getElementById("library-walk-hud");
+  const walkResume = document.getElementById("library-walk-resume");
+  const walkSit = document.getElementById("library-walk-sit");
+
+  if (
+    sceneContainer instanceof HTMLElement &&
+    walkHud instanceof HTMLElement &&
+    walkResume instanceof HTMLElement
+  ) {
+    try {
+      initLibraryScene(
+        sceneContainer,
+        walkHud,
+        walkResume,
+        walkSit instanceof HTMLElement ? walkSit : null,
+      );
+    } catch (error) {
+      /* Sin WebGL, la biblioteca sigue funcionando sin escena. */
+      console.error("[Scribe] Library scene unavailable:", error);
+      document.documentElement.dataset.libraryScene = "off";
+    }
+  }
+</script>
+
+<style is:global>
+  .library-scene {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+
+    /* Fondo mientras no hay escena (o si WebGL no está disponible). */
+    background:
+      radial-gradient(
+        ellipse 55% 60% at 72% 48%,
+        rgba(179, 154, 99, 0.12),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse at center,
+        #11110f 0%,
+        #090909 55%,
+        #050505 100%
+      );
+  }
+
+  .library-walk-hud {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+
+    pointer-events: none;
+
+    font-family: "Courier New", Courier, monospace;
+  }
+
+  .library-walk-hud[hidden],
+  .library-walk-resume[hidden] {
+    display: none;
+  }
+
+  .library-walk-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 24px;
+
+    display: flex;
+    gap: 28px;
+
+    margin: 0;
+
+    color: #8a8780;
+
+    font-size: 10px;
+    letter-spacing: 0.15em;
+
+    transform: translateX(-50%);
+  }
+
+  .library-walk-hint span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    transition: opacity 200ms ease;
+  }
+
+  /* "E Sit" apagado mientras estás lejos de la silla. */
+  .library-walk-hint .is-disabled {
+    opacity: 0.35;
+  }
+
+  .library-walk-hint kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+
+    border: 1px solid currentColor;
+
+    font: inherit;
+    font-size: 10px;
+  }
+
+  .library-walk-hint span kbd:last-of-type {
+    margin-right: 4px;
+  }
+
+  .library-walk-resume {
+    position: absolute;
+    inset: 0;
+
+    width: max-content;
+    height: max-content;
+    margin: auto;
+    padding: 12px 22px;
+
+    border: 1px solid #76633e;
+    background: rgba(8, 8, 8, 0.7);
+    color: #d0bc89;
+
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .library-walk-resume:hover,
+  .library-walk-resume:focus-visible {
+    border-color: #d0bc89;
+    outline: none;
+  }
+</style>

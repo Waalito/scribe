@@ -1,0 +1,473 @@
+---
+interface Props {
+  modelUrl?: string;
+  /** true = muestra los botones de prueba (incluido "Simular Muerte"). */
+  debug?: boolean;
+}
+
+const { 
+  modelUrl = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb',
+  debug = false,
+} = Astro.props;
+---
+
+<div id="death-overlay"></div>
+
+<div
+  id="ui-layer"
+  data-debug={debug ? 'true' : 'false'}
+  style={debug ? undefined : 'display: none;'}
+>
+  <div id="loading-text">Cargando salón de estudio...</div>
+  <div id="instrucciones" class="instrucciones">
+    WASD para explorar la biblioteca.<br />ESC para ver el cursor.
+  </div>
+  <button id="btn-look" class="btn-lotm">Explorar Entorno (Ocultar Cursor)</button>
+  <button id="btn-stand" class="btn-stand">Ponerse de Pie</button>
+  <button id="btn-sit" class="btn-sit" style="display: none;">Sentarse en la Silla</button>
+  <button id="btn-die" class="btn-die">Simular Muerte</button>
+</div>
+
+<div id="game-container" data-model-url={modelUrl}></div>
+
+<script>
+  import * as THREE from 'three';
+  import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+  import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+  // 1. ESTADO DEL JUEGO
+  let isSeated = true;
+  let isDead = false;
+
+  const HEIGHT_STANDING = 1.6;
+  const HEIGHT_SEATED = 1.1;
+  const HEIGHT_DEAD = 0.82;
+
+  const container = document.getElementById('game-container') as HTMLDivElement;
+  const glbUrl = container.dataset.modelUrl!;
+
+  // 2. CONFIGURACIÓN DE LA ESCENA
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0e11);
+  scene.fog = new THREE.FogExp2(0x0b0e11, 0.08);
+
+  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  
+  // Evitar que el canvas agregue espacios de línea o desborde
+  renderer.domElement.style.display = 'block';
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  container.appendChild(renderer.domElement);
+
+  // 3. ILUMINACIÓN Y LA LUNA ROJA
+  const ambientLight = new THREE.AmbientLight(0x1a2129, 0.5);
+  scene.add(ambientLight);
+
+  const gasLampLight = new THREE.PointLight(0xe6953b, 3, 10);
+  gasLampLight.position.set(0, 2.2, -1);
+  scene.add(gasLampLight);
+
+  const moonGeo = new THREE.SphereGeometry(8, 32, 32);
+  const moonMat = new THREE.MeshBasicMaterial({ color: 0x8a1c1c });
+  const crimsonMoon = new THREE.Mesh(moonGeo, moonMat);
+  crimsonMoon.position.set(0, 30, -60);
+  scene.add(crimsonMoon);
+
+  // 4. ARQUITECTURA DEL SALÓN DE ESTUDIO (Suelo y Paredes)
+  const floorGeo = new THREE.PlaneGeometry(20, 20);
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x121010, roughness: 0.9 });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  scene.add(floor);
+
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x171315, roughness: 0.8 });
+
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(20, 8), wallMat);
+  backWall.position.set(0, 4, -10);
+  scene.add(backWall);
+
+  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(20, 8), wallMat);
+  leftWall.position.set(-10, 4, 0);
+  leftWall.rotation.y = Math.PI / 2;
+  scene.add(leftWall);
+
+  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(20, 8), wallMat);
+  rightWall.position.set(10, 4, 0);
+  rightWall.rotation.y = -Math.PI / 2;
+  scene.add(rightWall);
+
+  // 5. MOBILIARIO BÁSICO DEL SALÓN
+  const deskGeo = new THREE.BoxGeometry(2.5, 0.8, 1.2);
+  const deskMat = new THREE.MeshStandardMaterial({ color: 0x241d1a, roughness: 0.7 });
+  const desk = new THREE.Mesh(deskGeo, deskMat);
+  desk.position.set(0, 0.4, -1.2);
+  scene.add(desk);
+
+  const shelfGeo = new THREE.BoxGeometry(1.8, 6, 0.8);
+  const shelfMat = new THREE.MeshStandardMaterial({ color: 0x1a1514, roughness: 0.8 });
+
+  const shelf1 = new THREE.Mesh(shelfGeo, shelfMat);
+  shelf1.position.set(-5, 3, -9);
+  scene.add(shelf1);
+
+  const shelf2 = new THREE.Mesh(shelfGeo, shelfMat);
+  shelf2.position.set(5, 3, -9);
+  scene.add(shelf2);
+
+  // 6. CARGA DE ASSET EXTERNO .GLB
+  const loader = new GLTFLoader();
+  const loadingText = document.getElementById('loading-text') as HTMLDivElement;
+
+  let customAsset: THREE.Group | null = null;
+
+  loader.load(
+    glbUrl,
+    (gltf) => {
+      customAsset = gltf.scene;
+      customAsset.scale.set(0.25, 0.25, 0.25);
+      customAsset.position.set(0, 0.85, -1.0);
+      scene.add(customAsset);
+
+      loadingText.style.display = 'none';
+    },
+    undefined,
+    (error) => {
+      console.error('Error cargando asset:', error);
+      loadingText.innerText = 'Error al cargar asset 3D';
+    }
+  );
+
+  // 7. CONTROLES Y JUGADOR
+  const controls = new PointerLockControls(camera, document.body);
+  controls.object.position.set(0, HEIGHT_SEATED, 0);
+  scene.add(controls.object);
+
+  // 8. INTERFAZ Y EVENTOS DE BOTONES
+  const btnLook = document.getElementById('btn-look') as HTMLButtonElement;
+  const btnStand = document.getElementById('btn-stand') as HTMLButtonElement;
+  const btnSit = document.getElementById('btn-sit') as HTMLButtonElement;
+  const btnDie = document.getElementById('btn-die') as HTMLButtonElement;
+  const instrucciones = document.getElementById('instrucciones') as HTMLDivElement;
+  const uiLayer = document.getElementById('ui-layer') as HTMLDivElement;
+  const cuerpo = document.body;
+
+  btnLook.addEventListener('click', () => {
+    if (!isDead) controls.lock();
+  });
+
+  controls.addEventListener('lock', () => {
+    btnLook.style.display = 'none';
+    if (!isSeated) instrucciones.style.display = 'block';
+  });
+
+  controls.addEventListener('unlock', () => {
+    if (!isDead) {
+      btnLook.style.display = 'block';
+      instrucciones.style.display = 'none';
+    }
+  });
+
+  btnStand.addEventListener('click', () => {
+    isSeated = false;
+    btnStand.style.display = 'none';
+    btnSit.style.display = 'inline-block';
+    controls.lock();
+  });
+
+  btnSit.addEventListener('click', () => {
+    isSeated = true;
+    controls.object.position.set(0, HEIGHT_SEATED, 0);
+    controls.object.rotation.set(0, 0, 0);
+    camera.rotation.set(0, 0, 0);
+
+    btnSit.style.display = 'none';
+    btnStand.style.display = 'inline-block';
+    instrucciones.style.display = 'none';
+    controls.lock();
+  });
+
+  // 8.1 MUERTE Y REINICIO (conectado con game.ts mediante eventos de window)
+  //
+  //   game.ts  -> "scene:play-death"     : empieza la secuencia de muerte
+  //   escena   -> "scene:death-complete" : la secuencia terminó
+  //   game.ts  -> "scene:reset"          : nueva run, volver a empezar
+  const DEATH_SEQUENCE_MS = 4500; // igual que la duración de fatalFade en el CSS
+  let deathTimeout: number | null = null;
+
+  function die(): void {
+    if (isDead) return;
+
+    isDead = true;
+    controls.unlock();
+    uiLayer.style.display = 'none';
+    cuerpo.classList.add('is-dead');
+
+    deathTimeout = window.setTimeout(() => {
+      deathTimeout = null;
+      window.dispatchEvent(new CustomEvent('scene:death-complete'));
+    }, DEATH_SEQUENCE_MS);
+  }
+
+  function revive(): void {
+    if (deathTimeout !== null) {
+      window.clearTimeout(deathTimeout);
+      deathTimeout = null;
+    }
+
+    isDead = false;
+    isSeated = true;
+    deathRoll = 0;
+
+    moveState.forward = false;
+    moveState.backward = false;
+    moveState.left = false;
+    moveState.right = false;
+
+    controls.object.position.set(0, HEIGHT_SEATED, 0);
+    controls.object.rotation.set(0, 0, 0);
+    camera.rotation.set(0, 0, 0);
+
+    cuerpo.classList.remove('is-dead');
+
+    uiLayer.style.display = uiLayer.dataset.debug === 'true' ? 'flex' : 'none';
+    btnLook.style.display = 'block';
+    btnStand.style.display = 'inline-block';
+    btnSit.style.display = 'none';
+    instrucciones.style.display = 'none';
+  }
+
+  // El botón de prueba usa el mismo camino que el juego real.
+  btnDie.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('scene:play-death'));
+  });
+
+  window.addEventListener('scene:play-death', die);
+  window.addEventListener('scene:reset', revive);
+
+  // 9. LÓGICA DE MOVIMIENTO WASD
+  const moveState = { forward: false, backward: false, left: false, right: false };
+
+  document.addEventListener('keydown', (event) => {
+    if (isSeated || isDead) return;
+    switch (event.code) {
+      case 'KeyW': moveState.forward = true; break;
+      case 'KeyA': moveState.left = true; break;
+      case 'KeyS': moveState.backward = true; break;
+      case 'KeyD': moveState.right = true; break;
+    }
+  });
+
+  document.addEventListener('keyup', (event) => {
+    if (isSeated || isDead) return;
+    switch (event.code) {
+      case 'KeyW': moveState.forward = false; break;
+      case 'KeyA': moveState.left = false; break;
+      case 'KeyS': moveState.backward = false; break;
+      case 'KeyD': moveState.right = false; break;
+    }
+  });
+
+  // 10. BUCLE DE FÍSICAS Y ANIMACIÓN
+  const velocity = new THREE.Vector3();
+  const direction = new THREE.Vector3();
+  let prevTime = performance.now();
+  let deathRoll = 0;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const time = performance.now();
+    const delta = (time - prevTime) / 1000;
+
+    let targetHeight = isSeated ? HEIGHT_SEATED : HEIGHT_STANDING;
+    if (isDead) targetHeight = HEIGHT_DEAD;
+
+    controls.object.position.y = THREE.MathUtils.lerp(
+      controls.object.position.y,
+      targetHeight,
+      8 * delta
+    );
+
+    if (isDead) {
+      deathRoll = THREE.MathUtils.lerp(deathRoll, Math.PI / 2.4, 4 * delta);
+      camera.rotation.z = deathRoll;
+    }
+
+    if (customAsset) {
+      customAsset.rotation.y += 0.002;
+    }
+
+    if (controls.isLocked === true && !isSeated && !isDead) {
+      velocity.x -= velocity.x * 10.0 * delta;
+      velocity.z -= velocity.z * 10.0 * delta;
+
+      direction.z = Number(moveState.forward) - Number(moveState.backward);
+      direction.x = Number(moveState.right) - Number(moveState.left);
+      direction.normalize();
+
+      const speed = 35.0;
+      if (moveState.forward || moveState.backward) velocity.z -= direction.z * speed * delta;
+      if (moveState.left || moveState.right) velocity.x -= direction.x * speed * delta;
+
+      controls.moveRight(-velocity.x * delta);
+      controls.moveForward(-velocity.z * delta);
+
+      const pos = controls.object.position;
+      pos.x = Math.max(-9, Math.min(9, pos.x));
+      pos.z = Math.max(-9, Math.min(5, pos.z));
+    }
+
+    prevTime = time;
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+
+<style>
+  /* Bloquear desbordamientos globales para el componente */
+  :global(html, body) {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: #0b0e11;
+  }
+
+  #game-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #ui-layer {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: auto;
+  }
+
+  .instrucciones {
+    color: #8a8780;
+    background: rgba(11, 14, 17, 0.85);
+    padding: 10px 15px;
+    border: 1px solid #373735;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+    display: none;
+  }
+
+  #loading-text {
+    color: #d0bc89;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+  }
+
+  button {
+    padding: 10px 20px;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: bold;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .btn-lotm {
+    background: linear-gradient(145deg, #1f1b1a, #121010);
+    color: #d0bc89;
+    border: 1px solid #76633e;
+  }
+  .btn-lotm:hover {
+    background: #2a211e;
+    border-color: #d0bc89;
+  }
+
+  .btn-stand {
+    background: #d9cbb4;
+    color: #1a1918;
+    border: 2px solid #967b5b;
+  }
+  .btn-stand:hover {
+    background: #ebe5d9;
+  }
+
+  .btn-sit {
+    background: #444441;
+    color: #ebe5d9;
+    border: 2px solid #62615d;
+  }
+  .btn-sit:hover {
+    background: #62615d;
+  }
+
+  .btn-die {
+    background: transparent;
+    color: #a8322f;
+    border: 2px solid #7d2426;
+  }
+  .btn-die:hover {
+    background: #4a181b;
+    color: #ebe5d9;
+  }
+
+  #death-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0;
+  }
+
+  :global(body.is-dead) #game-container {
+    animation: violentShake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    filter: grayscale(100%) contrast(130%) brightness(0.3);
+    transition: filter 3s ease-in;
+  }
+
+  :global(body.is-dead) #death-overlay {
+    animation: fatalFade 4.5s forwards ease-in;
+  }
+
+  @keyframes violentShake {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    10% { transform: translate(-20px, -15px) rotate(-2deg); }
+    20% { transform: translate(20px, 15px) rotate(2deg); }
+    30% { transform: translate(-20px, 20px) rotate(-2deg); }
+    40% { transform: translate(20px, -20px) rotate(2deg); }
+    50% { transform: translate(-10px, -10px) rotate(-1deg); }
+    60% { transform: translate(10px, 10px) rotate(1deg); }
+    100% { transform: translate(0, 0) rotate(0); }
+  }
+
+  @keyframes fatalFade {
+    0% { opacity: 1; background: rgba(138, 28, 28, 0.5); }
+    15% { opacity: 1; background: radial-gradient(circle, transparent 70%, rgba(11, 14, 17, 0.95) 100%); }
+    60% { opacity: 1; background: radial-gradient(circle, transparent 15%, rgba(0, 0, 0, 1) 75%); }
+    100% { opacity: 1; background: #000; }
+  }
+</style>

@@ -18,4 +18,12 @@ export const documentConditions: Partial<
   'tongue-twister': {
     maxErrors: 3,
   },
+
+  tale: {
+    maxErrors: 4,
+  },
+
+  knowledge: {
+    maxErrors: 7,
+  },
 };

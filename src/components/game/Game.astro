@@ -2,6 +2,7 @@
 import type { DocumentContent } from "@/types/document";
 import DeathScreen from "@/components/ui/DeathScreen.astro";
 import CompletionScreen from "@/components/ui/CompletionScreen.astro";
+import CollectionCompleteScreen from "@/components/ui/CollectionCompleteScreen.astro";
 import Revolver from "@/components/ui/Revolver.astro";
 import ErrorCounter from "@/components/ui/ErrorCounter.astro";
 
@@ -28,6 +29,23 @@ const { documents } = Astro.props;
       <p>Tiempo: <strong id="run-time">—</strong></p>
     </div>
   </header>
+
+  <!-- GAME HUD -->
+<section class="game-hud">
+
+  <div class="hud-weapon">
+    <strong id="run-bullets">0</strong>
+    <Revolver />
+  </div>
+
+  <div class="error-state">
+    <ErrorCounter />
+    <strong id="run-errors" class="error-value">0</strong>
+  </div>
+
+
+
+</section>
 
   <!-- ============================================================
        MAIN
@@ -75,40 +93,7 @@ const { documents } = Astro.props;
          RUN STATE
          ========================================================== -->
 
-    <section class="run-state">
 
-      <div class="error-state">
-  <span class="label">ERRORES</span>
-  <ErrorCounter />
-  <strong id="run-errors" class="error-value">0</strong>
-</div>
-
-      <div>
-        <span class="label">ERRORES TOTALES</span>
-        <strong id="run-total-errors">0</strong>
-      </div>
-
-      <div>
-        <span class="label">BALAS</span>
-        <strong id="run-bullets">0</strong>
-        <Revolver />
-      </div>
-
-      <div>
-        <span class="label">SOBREVIVIDO</span>
-        <strong id="run-survived">0</strong>
-      </div>
-
-      <div>
-        <span class="label">CORRUPCIÓN</span>
-        <strong id="run-corruption">0</strong>
-      </div>
-
-      <div>
-        <span class="label">STAGE</span>
-        <strong id="corruption-stage">—</strong>
-      </div>
-    </section>
 
     <!-- ==========================================================
          LAST ACTION
@@ -121,6 +106,37 @@ const { documents } = Astro.props;
     </section>
   </main>
 
+  <!-- GAME FOOTER -->
+<footer class="game-footer" aria-label="Estado de la partida">
+
+  <div class="footer-stat">
+    <span>Errores totales</span>
+    <strong id="run-total-errors">0</strong>
+  </div>
+
+  <span class="footer-separator" aria-hidden="true">·</span>
+
+  <div class="footer-stat">
+    <span>Sobrevivido</span>
+    <strong id="run-survived">0</strong>
+  </div>
+
+  <span class="footer-separator" aria-hidden="true">·</span>
+
+  <div class="footer-stat">
+    <span>Corrupción</span>
+    <strong id="run-corruption">0</strong>
+  </div>
+
+  <span class="footer-separator" aria-hidden="true">·</span>
+
+  <div class="footer-stat">
+    <span>Stage</span>
+    <strong id="corruption-stage">—</strong>
+  </div>
+
+</footer>
+
   <!-- ============================================================
        MESSAGE
        ============================================================ -->
@@ -131,6 +147,7 @@ const { documents } = Astro.props;
 
   <DeathScreen />
   <CompletionScreen />
+  <CollectionCompleteScreen />
 </section>
 
 <!-- ============================================================
@@ -168,12 +185,20 @@ const { documents } = Astro.props;
 
     padding: 40px;
 
-    background: radial-gradient(
+    /*background: radial-gradient(
       ellipse at center,
       #11110f 0%,
       #090909 55%,
       #050505 100%
-    );
+    );*/
+
+
+    /*background: #000;
+    background-image: url('/images/backgrounds/tres.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-blend-mode:lighten; */
 
     color: #e8e8e8;
 
@@ -291,13 +316,13 @@ const { documents } = Astro.props;
      * de tamaño controlado.
      */
 
-    height: 390px;
+    height: 590px;
 
-    flex: 0 0 390px;
+    flex: 0 0 590px;
 
     display: flex;
 
-    align-items: center;
+    align-items: start;
 
     justify-content: center;
 
@@ -768,4 +793,117 @@ const { documents } = Astro.props;
       max-width: none;
     }
   }
+
+
+
+/* ========================================
+   GAME HUD
+======================================== */
+
+.game-hud {
+  width: min(1000px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 24px;
+  margin: 0 auto 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.error-state,
+.hud-weapon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* ========================================
+   QUIET GAME FOOTER
+======================================== */
+
+.game-footer {
+
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 40px;
+  padding: 5px 24px;
+
+  color: #666;
+  font: 11px/1.5 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  user-select: none;
+}
+
+.footer-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.footer-stat strong {
+  color: #888;
+  font-weight: 400;
+}
+
+.footer-separator {
+  color: #383838;
+  user-select: none;
+}
+
+@media (max-width: 420px) {
+  .game-footer {
+    gap: 6px;
+    font-size: 10px;
+    padding-inline: 12px;
+  }
+}
+
+
+/* ========================================
+   DOCUMENT SHIFT ANIMATION
+======================================== */
+
+.document-container {
+  will-change: transform;
+}
+
+.document-container.is-shifting {
+  animation: document-shift 220ms ease-out;
+}
+
+@keyframes document-shift {
+  from {
+    transform: translateY(12px);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Respeta las preferencias de movimiento */
+
+@media (prefers-reduced-motion: reduce) {
+  .document-container.is-shifting {
+    animation: none;
+  }
+}
 </style>

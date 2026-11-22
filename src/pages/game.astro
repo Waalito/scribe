@@ -1,6 +1,7 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import Game from '@/components/game/Game.astro';
+import StudyRoom from '@/components/TestStudy.astro';
 
 import { DocumentLoader } from '@/systems/document/DocumentLoader';
 
@@ -28,5 +29,7 @@ const documents = Object.values(
 ---
 
 <Layout>
+  <StudyRoom/> 
+  
   <Game documents={documents} />
 </Layout>

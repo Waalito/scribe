@@ -1,0 +1,70 @@
+
+---
+import { DocumentLibrary } from '@/systems/document/DocumentLibrary';
+import type { DocumentContent } from '@/types/document';
+
+const library = new DocumentLibrary();
+
+const testDocument: DocumentContent = {
+  metadata: {
+    id: 'test-poem-001',
+    locale: 'es',
+    title: 'El último invierno',
+    category: 'poem',
+    tags: ['test'],
+  },
+  paragraphs: [
+    {
+      lines: [
+        { text: 'El invierno nunca termina.' },
+        { text: 'La piedra recuerda.' },
+      ],
+    },
+  ],
+};
+
+// Registrar documento
+library.preserveDocument(testDocument);
+
+// Intentar duplicarlo
+library.preserveDocument(testDocument);
+
+const documents = library.getPreservedDocuments();
+const exists = library.hasDocument('test-poem-001');
+const ids = library.getPreservedDocumentIds();
+
+---
+
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>DocumentLibrary Test</title>
+  </head>
+
+  <body>
+    <main>
+      <h1>DocumentLibrary Test</h1>
+
+      <p>Total conservados: {library.size}</p>
+
+      <p>Documento encontrado: {exists ? 'Sí' : 'No'}</p>
+
+      <p>Identificadores: {Array.from(ids).join(', ')}</p>
+
+      <h2>Documentos</h2>
+
+      {documents.map((document) => (
+        <article>
+          <h3>{document.metadata.title}</h3>
+          <p>Categoría: {document.metadata.category}</p>
+
+          {document.paragraphs.map((paragraph) => (
+            <p>
+              {paragraph.lines.map((line) => line.text).join(' ')}
+            </p>
+          ))}
+        </article>
+      ))}
+    </main>
+  </body>
+</html>

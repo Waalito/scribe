@@ -1,0 +1,495 @@
+
+---
+/**
+ * Pantalla de inicio de Scribe.
+ *
+ * Minimalismo cinematográfico e inmersión ambiental.
+ * Enter (o clic) lleva al juego.
+ */
+
+interface Props {
+  /** Ruta a la que lleva la acción principal. */
+  href?: string;
+}
+
+const { href = "/game" } = Astro.props;
+---
+
+<section class="start-screen" aria-labelledby="start-title">
+
+  <!-- ATMOSPHERE -->
+  <div class="start-atmosphere" aria-hidden="true">
+    <div class="start-light"></div>
+    <div class="start-vignette"></div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="start-content">
+
+    <p class="start-eyebrow">
+      A GAME OF FRAGMENTS
+    </p>
+
+    <h1 id="start-title" class="start-title">
+      SCRIBE<span class="start-cursor" aria-hidden="true">_</span>
+    </h1>
+
+    <div class="start-divider" aria-hidden="true">
+      <span></span>
+    </div>
+
+    <p class="start-tagline">
+      Every error has a price.
+    </p>
+
+    <a
+      id="start-action"
+      class="start-action"
+      href={href}
+      aria-label="Begin game"
+    >
+      <span class="start-key">ENTER</span>
+      <span class="start-action-label">BEGIN</span>
+      <span class="start-action-line" aria-hidden="true"></span>
+    </a>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="start-footer">
+    <span class="start-footer-line" aria-hidden="true"></span>
+    <p>THE CYCLE NEVER ENDS</p>
+    <span class="start-footer-line" aria-hidden="true"></span>
+  </footer>
+
+</section>
+
+<script>
+  const action = document.getElementById("start-action");
+
+  if (action instanceof HTMLAnchorElement) {
+    window.addEventListener("keydown", (event) => {
+      if (
+        event.key !== "Enter" ||
+        event.repeat ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+
+      // Evita interferir con otros controles interactivos.
+      if (
+        event.target instanceof HTMLElement &&
+        event.target !== document.body &&
+        event.target !== document.documentElement
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      window.location.assign(action.href);
+    });
+  }
+</script>
+
+<style>
+  .start-screen {
+    position: relative;
+    isolation: isolate;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 100%;
+    height: 100%;
+    min-height: 100vh;
+
+    overflow: hidden;
+
+background:
+  radial-gradient(
+    ellipse at 50% 45%,
+    #0d0d0d 0%,
+    #0b0b0b 35%,
+    #080808 70%,
+    #050505 100%
+  );
+
+    color: var(--color-parchment-light, #ebe5d9);
+
+    font-family: "Courier New", Courier, monospace;
+  }
+
+  /* ============================================================
+     ATMOSPHERE
+     ============================================================ */
+
+  .start-atmosphere {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+.start-light {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(85vw, 1100px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -55%);
+
+
+
+  filter: blur(65px);
+  animation: ambient-breathe 20s ease-in-out infinite alternate;
+}
+
+
+.start-vignette {
+  position: absolute;
+  inset: 0;
+
+
+}
+
+  /* ============================================================
+     CONTENT
+     ============================================================ */
+
+  .start-content {
+    position: relative;
+    z-index: 1;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    padding: 24px;
+
+    text-align: center;
+
+    animation: content-appear 1600ms ease both;
+  }
+
+  .start-eyebrow {
+    margin: 0 0 25px;
+
+    color: var(--color-ink-untyped, #77736b);
+
+    font-size: 10px;
+    letter-spacing: 0.38em;
+    line-height: 1.5;
+    text-transform: uppercase;
+  }
+
+  .start-title {
+    position: relative;
+
+    margin: 0;
+    padding-left: 0.24em;
+
+    color: var(--color-parchment-light, #ebe5d9);
+
+    font-size: clamp(48px, 8vw, 92px);
+    font-weight: 400;
+    letter-spacing: 0.24em;
+    line-height: 1;
+
+    text-shadow:
+      0 0 35px rgba(216, 196, 158, 0.07),
+      0 2px 18px rgba(0, 0, 0, 0.8);
+  }
+
+  .start-cursor {
+    display: inline-block;
+
+    margin-left: 0.04em;
+
+    color: var(--color-blood, #7d2426);
+
+    font-weight: 400;
+
+    animation: cursor-blink 1100ms steps(1) infinite;
+  }
+
+  /* ============================================================
+     DIVIDER
+     ============================================================ */
+
+  .start-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: min(220px, 55vw);
+    height: 1px;
+
+    margin-top: 29px;
+
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(160, 135, 95, 0.3),
+      transparent
+    );
+  }
+
+  .start-divider span {
+    width: 4px;
+    height: 4px;
+
+    transform: rotate(45deg);
+
+    background: rgba(177, 145, 91, 0.55);
+  }
+
+  /* ============================================================
+     TAGLINE
+     ============================================================ */
+
+  .start-tagline {
+    margin: 22px 0 0;
+
+    color: var(--color-iron-light, #8a8780);
+
+    font-size: clamp(11px, 1.2vw, 13px);
+    letter-spacing: 0.13em;
+    line-height: 1.8;
+  }
+
+  /* ============================================================
+     ACTION
+     ============================================================ */
+
+  .start-action {
+    position: relative;
+
+    display: flex;
+    align-items: center;
+    gap: 13px;
+
+    margin-top: 55px;
+    padding: 10px 14px;
+
+    color: var(--color-parchment, #d9cbb4);
+
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-decoration: none;
+
+    opacity: 0.68;
+
+    transition:
+      opacity 300ms ease,
+      color 300ms ease,
+      transform 300ms ease;
+  }
+
+  .start-key {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    min-width: 49px;
+    height: 25px;
+    padding: 0 8px;
+
+    border: 1px solid rgba(190, 170, 137, 0.4);
+
+    color: var(--color-parchment-light, #ebe5d9);
+
+    font-size: 9px;
+    letter-spacing: 0.1em;
+
+    transition:
+      border-color 300ms ease,
+      background 300ms ease;
+  }
+
+  .start-action-label {
+    transition: letter-spacing 300ms ease;
+  }
+
+  .start-action-line {
+    position: absolute;
+
+    right: 14px;
+    bottom: 3px;
+    left: 14px;
+
+    height: 1px;
+
+    transform: scaleX(0);
+    transform-origin: center;
+
+    background: rgba(177, 145, 91, 0.6);
+
+    transition: transform 350ms ease;
+  }
+
+  .start-action:hover,
+  .start-action:focus-visible {
+    color: var(--color-parchment-light, #ebe5d9);
+
+    opacity: 1;
+
+    outline: none;
+  }
+
+  .start-action:hover {
+    transform: translateY(-2px);
+  }
+
+  .start-action:hover .start-key,
+  .start-action:focus-visible .start-key {
+    border-color: rgba(190, 155, 94, 0.85);
+
+    background: rgba(160, 125, 72, 0.09);
+  }
+
+  .start-action:hover .start-action-label,
+  .start-action:focus-visible .start-action-label {
+    letter-spacing: 0.28em;
+  }
+
+  .start-action:hover .start-action-line,
+  .start-action:focus-visible .start-action-line {
+    transform: scaleX(1);
+  }
+
+  /* ============================================================
+     FOOTER
+     ============================================================ */
+
+  .start-footer {
+    position: absolute;
+
+    right: 24px;
+    bottom: 35px;
+    left: 24px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+
+    animation: content-appear 2200ms ease both;
+  }
+
+  .start-footer p {
+    margin: 0;
+
+    color: rgba(126, 120, 108, 0.58);
+
+    font-size: 8px;
+    letter-spacing: 0.3em;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .start-footer-line {
+    width: 25px;
+    height: 1px;
+
+    background: rgba(126, 120, 108, 0.2);
+  }
+
+  /* ============================================================
+     ANIMATIONS
+     ============================================================ */
+
+  @keyframes content-appear {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes cursor-blink {
+    0%,
+    55% {
+      opacity: 1;
+    }
+
+    56%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes ambient-breathe {
+    from {
+      opacity: 0.65;
+      transform: translate(-50%, -55%) scale(0.94);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate(-50%, -55%) scale(1.08);
+    }
+  }
+
+  /* ============================================================
+     RESPONSIVE
+     ============================================================ */
+
+  @media (max-width: 600px) {
+    .start-eyebrow {
+      font-size: 9px;
+      letter-spacing: 0.28em;
+    }
+
+    .start-title {
+      font-size: clamp(42px, 12vw, 64px);
+    }
+
+    .start-tagline {
+      font-size: 11px;
+    }
+
+    .start-footer {
+      bottom: 25px;
+    }
+
+    .start-footer p {
+      font-size: 7px;
+      letter-spacing: 0.2em;
+    }
+
+    .start-footer-line {
+      width: 15px;
+    }
+  }
+
+  /* ============================================================
+     ACCESSIBILITY
+     ============================================================ */
+
+  @media (prefers-reduced-motion: reduce) {
+    .start-content,
+    .start-footer,
+    .start-light,
+    .start-cursor {
+      animation: none;
+    }
+
+    .start-action,
+    .start-key,
+    .start-action-label,
+    .start-action-line {
+      transition: none;
+    }
+  }
+</style>

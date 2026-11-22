@@ -1,0 +1,20 @@
+---
+import Layout from '../layouts/Layout.astro';
+import '../styles/global.css';
+import RunWeaponTest from '../components/RunWeaponTest.astro';
+import Error from '../components/error-feedback-test.astro';
+import CheckTest from '../components/checkpoint-feedback-test.astro'
+import GameLoop from '../components/game-loop.astro';
+import Revolver from '../components/ui/Revolver.astro';
+import ErrorIndicator from '../components/ui/ErrorIndicator.astro';
+---
+ 
+<Layout>
+  <main>
+    <GameLoop />
+    <Revolver />
+    <ErrorIndicator />
+ 
+ 
+  </main>
+</Layout>

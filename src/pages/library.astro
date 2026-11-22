@@ -1,0 +1,1081 @@
+---
+/**
+ * LIBRARY — Archive of Fragments
+ *
+ * Diseño minimalista en tres ideas:
+ *
+ * 1. Pestañas por categoría arriba.
+ * 2. Lista numerada a la izquierda, con los documentos aún no
+ *    conservados como "? ? ?".
+ * 3. El documento se lee como texto directo sobre el fondo, sin
+ *    hoja ni adornos, en una columna junto a la lista.
+ *
+ * El fondo es LibraryScene (Three.js). Al pulsar E el jugador se
+ * levanta: esta interfaz se desvanece y puede caminar por la sala.
+ */
+
+import Layout from "@/layouts/Layout.astro";
+import LibraryScene from "@/components/LibraryScene.astro";
+import { documents } from "@/data/documents";
+import "@/styles/global.css";
+
+/*
+ * Catálogo mínimo: solo id y categoría.
+ *
+ * Sirve para saber cuántos documentos existen y dibujar los huecos
+ * "? ? ?" sin enviar al cliente el texto de los que aún no se han
+ * conservado. Se filtra por 'es' porque es el idioma que carga el
+ * juego en game.astro.
+ */
+const catalog = documents
+  .filter((item) => item.metadata.locale === "es")
+  .map((item) => ({
+    id: item.metadata.id,
+    category: item.metadata.category,
+  }));
+---
+
+<Layout>
+  <LibraryScene />
+
+  <main class="lib-page">
+    <header class="lib-header">
+      <div>
+        <p class="lib-eyebrow">ARCHIVE OF FRAGMENTS</p>
+        <h1 class="lib-title">Library</h1>
+      </div>
+
+      <p class="lib-count">
+        PRESERVED <span id="library-count">—</span>
+      </p>
+    </header>
+
+    <nav
+      id="library-tabs"
+      class="lib-tabs"
+      role="tablist"
+      aria-label="Document categories"
+    ></nav>
+
+    <section class="lib-body">
+      <ul
+        id="library-list"
+        class="lib-list"
+        aria-label="Documents"
+      ></ul>
+
+      <article
+        id="library-reader"
+        class="lib-reader"
+        aria-live="polite"
+      >
+        <p class="lib-empty">Recovering fragments...</p>
+      </article>
+    </section>
+
+    <footer class="lib-footer">
+      <button
+        id="library-stand"
+        class="lib-hint lib-hint--walk"
+        type="button"
+      >
+        <kbd>E</kbd> Stand up
+      </button>
+      <span class="lib-hint"><kbd>↑</kbd><kbd>↓</kbd> Select</span>
+      <span class="lib-hint"><kbd>←</kbd><kbd>→</kbd> Category</span>
+      <a class="lib-hint lib-hint--link" href="/">
+        <kbd>ESC</kbd> Return
+      </a>
+    </footer>
+  </main>
+
+  <script
+    id="library-catalog"
+    type="application/json"
+    set:html={JSON.stringify(catalog)}
+  />
+</Layout>
+
+<script>
+  import { DocumentLibrary } from "@/systems/document/DocumentLibrary";
+  import type {
+    DocumentCategory,
+    DocumentContent,
+  } from "@/types/document";
+
+  /* ==========================================================
+   * TIPOS Y TEXTOS
+   * ========================================================== */
+
+  type Filter = "all" | DocumentCategory;
+
+  type CatalogItem = {
+    id: string;
+    category: DocumentCategory;
+  };
+
+  type Entry =
+    | {
+        kind: "doc";
+        id: string;
+        category: DocumentCategory;
+        doc: DocumentContent;
+      }
+    | {
+        kind: "locked";
+        id: string;
+        category: DocumentCategory;
+      };
+
+  const CATEGORY_ORDER: DocumentCategory[] = [
+    "poem",
+    "tongue-twister",
+    "historical",
+    "letter",
+    "tale",
+    "knowledge",
+  ];
+
+  const TAB_LABEL: Record<DocumentCategory, string> = {
+    poem: "POEMS",
+    "tongue-twister": "TONGUE TWISTERS",
+    historical: "HISTORICAL",
+    letter: "LETTERS",
+    tale: "TALES",
+    knowledge: "KNOWLEDGE",
+  };
+
+  const KIND_LABEL: Record<DocumentCategory, string> = {
+    poem: "POEM",
+    "tongue-twister": "TONGUE TWISTER",
+    historical: "HISTORICAL",
+    letter: "LETTER",
+    tale: "TALE",
+    knowledge: "KNOWLEDGE",
+  };
+
+  /* ==========================================================
+   * UTILIDADES
+   * ========================================================== */
+
+  function el<K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    className?: string,
+    text?: string,
+  ): HTMLElementTagNameMap[K] {
+    const node = document.createElement(tag);
+
+    if (className) {
+      node.className = className;
+    }
+
+    if (text !== undefined) {
+      node.textContent = text;
+    }
+
+    return node;
+  }
+
+  function readCatalog(): CatalogItem[] {
+    try {
+      const raw = document.getElementById(
+        "library-catalog",
+      )?.textContent;
+
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function readPreserved(): DocumentContent[] {
+    try {
+      return new DocumentLibrary().getPreservedDocuments();
+    } catch {
+      return [];
+    }
+  }
+
+  /* Mientras el jugador camina por la sala, la interfaz no responde. */
+  function isWalking(): boolean {
+    return document.documentElement.dataset.libraryMode === "walking";
+  }
+
+  /* ==========================================================
+   * BIBLIOTECA
+   * ========================================================== */
+
+  function initLibrary(
+    tabsEl: HTMLElement,
+    listEl: HTMLElement,
+    readerEl: HTMLElement,
+    countEl: HTMLElement,
+  ): void {
+    const catalog = readCatalog();
+    const preserved = new Map<string, DocumentContent>(
+      readPreserved().map((doc) => [doc.metadata.id, doc]),
+    );
+
+    /*
+     * Un hueco por cada documento del catálogo, en su orden.
+     * Los conservados muestran su contenido; el resto, "? ? ?".
+     */
+    const entries: Entry[] = catalog.map((item) => {
+      const doc = preserved.get(item.id);
+
+      return doc
+        ? { kind: "doc", id: item.id, category: item.category, doc }
+        : { kind: "locked", id: item.id, category: item.category };
+    });
+
+    /* Documentos conservados que no estén en el catálogo. */
+    const catalogIds = new Set(catalog.map((item) => item.id));
+
+    preserved.forEach((doc) => {
+      if (!catalogIds.has(doc.metadata.id)) {
+        entries.push({
+          kind: "doc",
+          id: doc.metadata.id,
+          category: doc.metadata.category,
+          doc,
+        });
+      }
+    });
+
+    const tabs: Filter[] = [
+      "all",
+      ...CATEGORY_ORDER.filter((category) =>
+        entries.some((entry) => entry.category === category),
+      ),
+    ];
+
+    let filter: Filter = "all";
+    let selectedId: string | null = null;
+
+    countEl.textContent = `${preserved.size} / ${entries.length}`;
+
+    /* ------------------------------------------------------
+     * Estado derivado
+     * ------------------------------------------------------ */
+
+    const visibleEntries = (): Entry[] =>
+      filter === "all"
+        ? entries
+        : entries.filter((entry) => entry.category === filter);
+
+    const selectableEntries = (): Entry[] =>
+      visibleEntries().filter((entry) => entry.kind === "doc");
+
+    /* ------------------------------------------------------
+     * Render
+     * ------------------------------------------------------ */
+
+    function renderTabs(): void {
+      tabsEl.replaceChildren(
+        ...tabs.map((tab) => {
+          const button = el(
+            "button",
+            tab === filter ? "lib-tab is-active" : "lib-tab",
+            tab === "all" ? "ALL" : TAB_LABEL[tab],
+          );
+
+          button.type = "button";
+          button.setAttribute("role", "tab");
+          button.setAttribute("aria-selected", String(tab === filter));
+          button.addEventListener("click", () => setFilter(tab));
+
+          return button;
+        }),
+      );
+    }
+
+    function renderList(): void {
+      listEl.replaceChildren(
+        ...visibleEntries().map((entry, index) => {
+          const item = el("li", "lib-row-item");
+          const number = el(
+            "span",
+            "lib-row-number",
+            String(index + 1).padStart(2, "0"),
+          );
+
+          if (entry.kind === "locked") {
+            const row = el("div", "lib-row lib-row--locked");
+            const body = el("span", "lib-row-body");
+
+            body.append(
+              el("span", "lib-row-title", "? ? ?"),
+              el("span", "lib-row-kind", KIND_LABEL[entry.category]),
+            );
+
+            row.append(number, body);
+            item.append(row);
+
+            return item;
+          }
+
+          const isSelected = entry.id === selectedId;
+          const row = el(
+            "button",
+            isSelected ? "lib-row is-selected" : "lib-row",
+          );
+          const body = el("span", "lib-row-body");
+
+          row.type = "button";
+
+          if (isSelected) {
+            row.setAttribute("aria-current", "true");
+          }
+
+          body.append(
+            el("span", "lib-row-title", entry.doc.metadata.title),
+            el("span", "lib-row-kind", KIND_LABEL[entry.category]),
+          );
+
+          row.append(number, body);
+          row.addEventListener("click", () => select(entry.id));
+          item.append(row);
+
+          return item;
+        }),
+      );
+
+      listEl
+        .querySelector(".is-selected")
+        ?.scrollIntoView({ block: "nearest" });
+    }
+
+    function renderReader(): void {
+      const selected = entries.find(
+        (entry) => entry.kind === "doc" && entry.id === selectedId,
+      );
+
+      if (!selected || selected.kind !== "doc") {
+        const empty = el("div", "lib-empty");
+
+        if (preserved.size === 0) {
+          empty.append(
+            el("p", "lib-empty-title", "No preserved documents found."),
+            el(
+              "p",
+              "lib-empty-hint",
+              "Finish a document within its error limit to keep it here.",
+            ),
+          );
+        } else {
+          empty.append(
+            el("p", "lib-empty-title", "Select a fragment."),
+          );
+        }
+
+        readerEl.replaceChildren(empty);
+
+        return;
+      }
+
+      const { doc } = selected;
+
+      /* Se recrea el contenedor para que la entrada se anime. */
+      const content = el("div", "lib-doc");
+
+      const head = el("header", "lib-doc-head");
+
+      head.append(
+        el("h2", "lib-doc-title", doc.metadata.title),
+        el(
+          "p",
+          "lib-doc-kind",
+          KIND_LABEL[doc.metadata.category],
+        ),
+      );
+
+      const text = el("div", "lib-text");
+
+      /*
+       * En poemas y trabalenguas cada línea es una línea del verso.
+       * En el resto (históricos, cartas...) los saltos del archivo
+       * son solo ajuste de texto, así que se unen en un párrafo.
+       */
+      const keepLines =
+        doc.metadata.category === "poem" ||
+        doc.metadata.category === "tongue-twister";
+
+      doc.paragraphs.forEach((paragraph) => {
+        const block = el("p", "lib-paragraph");
+
+        if (keepLines) {
+          paragraph.lines.forEach((line) => {
+            block.append(el("span", "lib-line", line.text));
+          });
+        } else {
+          block.append(
+            el(
+              "span",
+              "lib-line",
+              paragraph.lines.map((line) => line.text).join(" "),
+            ),
+          );
+        }
+
+        text.append(block);
+      });
+
+      content.append(head, text);
+      readerEl.replaceChildren(content);
+      readerEl.scrollTop = 0;
+    }
+
+    function renderAll(): void {
+      renderTabs();
+      renderList();
+      renderReader();
+    }
+
+    /* ------------------------------------------------------
+     * Acciones
+     * ------------------------------------------------------ */
+
+    function select(id: string | null): void {
+      selectedId = id;
+      renderList();
+      renderReader();
+    }
+
+    function setFilter(next: Filter): void {
+      if (next === filter) {
+        return;
+      }
+
+      filter = next;
+
+      const stillVisible = selectableEntries().some(
+        (entry) => entry.id === selectedId,
+      );
+
+      if (!stillVisible) {
+        selectedId = selectableEntries()[0]?.id ?? null;
+      }
+
+      renderAll();
+    }
+
+    function moveSelection(step: 1 | -1): void {
+      const selectable = selectableEntries();
+
+      if (selectable.length === 0) {
+        return;
+      }
+
+      const current = selectable.findIndex(
+        (entry) => entry.id === selectedId,
+      );
+
+      const next = Math.min(
+        selectable.length - 1,
+        Math.max(0, current + step),
+      );
+
+      select(selectable[next].id);
+    }
+
+    function moveTab(step: 1 | -1): void {
+      const current = tabs.indexOf(filter);
+      const next = Math.min(
+        tabs.length - 1,
+        Math.max(0, current + step),
+      );
+
+      setFilter(tabs[next]);
+    }
+
+    /* ------------------------------------------------------
+     * Teclado
+     * ------------------------------------------------------ */
+
+    window.addEventListener("keydown", (event) => {
+      if (isWalking()) {
+        return;
+      }
+
+      if (event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+      }
+
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          moveSelection(1);
+          break;
+
+        case "ArrowUp":
+          event.preventDefault();
+          moveSelection(-1);
+          break;
+
+        case "ArrowRight":
+          event.preventDefault();
+          moveTab(1);
+          break;
+
+        case "ArrowLeft":
+          event.preventDefault();
+          moveTab(-1);
+          break;
+
+        case "Escape":
+        case "Backspace":
+          event.preventDefault();
+          window.location.assign("/");
+          break;
+      }
+    });
+
+    /* Levantarse: lo gestiona LibraryScene al recibir este evento. */
+    document
+      .getElementById("library-stand")
+      ?.addEventListener("click", () => {
+        window.dispatchEvent(new CustomEvent("library:toggle"));
+      });
+
+    /* ------------------------------------------------------
+     * Inicio
+     * ------------------------------------------------------ */
+
+    selectedId = selectableEntries()[0]?.id ?? null;
+
+    renderAll();
+  }
+
+  const tabsEl = document.getElementById("library-tabs");
+  const listEl = document.getElementById("library-list");
+  const readerEl = document.getElementById("library-reader");
+  const countEl = document.getElementById("library-count");
+
+  if (
+    tabsEl instanceof HTMLElement &&
+    listEl instanceof HTMLElement &&
+    readerEl instanceof HTMLElement &&
+    countEl instanceof HTMLElement
+  ) {
+    initLibrary(tabsEl, listEl, readerEl, countEl);
+  }
+</script>
+
+<!--
+  Estilos globales a propósito: los elementos de la lista, las pestañas
+  y el lector se crean desde JavaScript y no reciben el atributo de
+  alcance que Astro añade a los estilos normales. Todo va con el
+  prefijo "lib-" para no chocar con otras páginas.
+-->
+<style is:global>
+  /* ============================================================
+     PÁGINA
+     ============================================================ */
+
+  .lib-page {
+    /* Tipografía del texto de lectura: cámbiala aquí. */
+    --lib-reading-font: "Courier New", Courier, monospace;
+
+    position: relative;
+    z-index: 1;
+
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+
+    height: 100%;
+    padding:
+      clamp(20px, 3.5vw, 48px)
+      clamp(20px, 5vw, 80px)
+      0;
+
+    color: var(--color-parchment, #d9cbb4);
+
+    font-family: "Courier New", Courier, monospace;
+
+    transition:
+      opacity 500ms ease,
+      visibility 0s linear 0s;
+  }
+
+  /* Velo oscuro a la izquierda: da legibilidad al texto sobre la escena. */
+  .lib-page::before {
+    content: "";
+
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+
+    background: linear-gradient(
+      90deg,
+      rgba(8, 8, 8, 0.94) 0%,
+      rgba(8, 8, 8, 0.84) 40%,
+      rgba(8, 8, 8, 0.38) 64%,
+      transparent 100%
+    );
+
+    pointer-events: none;
+  }
+
+  /* De pie: la interfaz desaparece. */
+  html[data-library-mode="walking"] .lib-page {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+
+    transition:
+      opacity 500ms ease,
+      visibility 0s linear 500ms;
+  }
+
+  /* Sin escena (WebGL no disponible) no tiene sentido levantarse. */
+  html[data-library-scene="off"] .lib-hint--walk {
+    display: none;
+  }
+
+  /* ============================================================
+     CABECERA
+     ============================================================ */
+
+  .lib-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+
+    padding-bottom: 20px;
+
+    border-bottom: 1px solid rgba(190, 170, 137, 0.2);
+  }
+
+  .lib-eyebrow,
+  .lib-count {
+    margin: 0;
+
+    color: var(--color-iron-light, #8a8780);
+
+    font-size: 10px;
+    letter-spacing: 0.25em;
+  }
+
+  .lib-title {
+    margin: 12px 0 0;
+
+    color: var(--color-parchment-light, #ebe5d9);
+
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 400;
+    letter-spacing: 0.15em;
+  }
+
+  .lib-count {
+    white-space: nowrap;
+  }
+
+  .lib-count span {
+    margin-left: 8px;
+
+    color: var(--color-gold-light, #d0bc89);
+  }
+
+  /* ============================================================
+     PESTAÑAS
+     ============================================================ */
+
+  .lib-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+
+    padding: 16px 0;
+
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .lib-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .lib-tab {
+    flex: 0 0 auto;
+
+    padding: 8px 18px;
+
+    border: 0;
+    background: transparent;
+    color: var(--color-iron-light, #8a8780);
+
+    font-size: 11px;
+    letter-spacing: 0.2em;
+
+    cursor: pointer;
+
+    transition:
+      color 150ms ease,
+      background 150ms ease;
+  }
+
+  .lib-tab:hover {
+    color: var(--color-parchment-light, #ebe5d9);
+  }
+
+  .lib-tab.is-active {
+    background: var(--color-parchment-light, #ebe5d9);
+    color: var(--color-iron-black, #1a1918);
+  }
+
+  /* ============================================================
+     CUERPO: lista + lector (la derecha queda libre para la escena)
+     ============================================================ */
+
+  .lib-body {
+    display: grid;
+    grid-template-columns:
+      minmax(240px, 300px)
+      minmax(0, 540px)
+      1fr;
+    gap: clamp(24px, 3.5vw, 56px);
+
+    min-height: 0;
+  }
+
+  /* ============================================================
+     LISTA
+     ============================================================ */
+
+  .lib-list {
+    margin: 0;
+    padding: 0 8px 16px 0;
+
+    list-style: none;
+
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-iron-dark, #444441) transparent;
+  }
+
+  .lib-row {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+
+    width: 100%;
+    padding: 12px 14px;
+
+    border: 0;
+    border-left: 2px solid transparent;
+    background: transparent;
+    color: var(--color-parchment, #d9cbb4);
+
+    font: inherit;
+    text-align: left;
+
+    transition: background 150ms ease;
+  }
+
+  button.lib-row {
+    cursor: pointer;
+  }
+
+  button.lib-row:hover {
+    background: rgba(217, 203, 180, 0.07);
+  }
+
+  .lib-row-number {
+    color: var(--color-gold-dark, #76633e);
+
+    font-size: 11px;
+  }
+
+  .lib-row-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    min-width: 0;
+  }
+
+  .lib-row-title {
+    font-size: 14px;
+    letter-spacing: 0.04em;
+  }
+
+  .lib-row-kind {
+    color: var(--color-iron-light, #8a8780);
+
+    font-size: 9px;
+    letter-spacing: 0.22em;
+  }
+
+  .lib-row.is-selected {
+    border-left-color: var(--color-gold, #b39a63);
+    background: linear-gradient(
+      90deg,
+      rgba(235, 229, 217, 0.96),
+      rgba(235, 229, 217, 0.6)
+    );
+    color: var(--color-iron-black, #1a1918);
+  }
+
+  .lib-row.is-selected .lib-row-number {
+    color: #5c4a2e;
+  }
+
+  .lib-row.is-selected .lib-row-kind {
+    color: #4a4b48;
+  }
+
+  .lib-row--locked {
+    color: #5a5b57;
+  }
+
+  .lib-row--locked .lib-row-title {
+    letter-spacing: 0.3em;
+  }
+
+  .lib-row--locked .lib-row-kind,
+  .lib-row--locked .lib-row-number {
+    color: #4a4b48;
+  }
+
+  /* ============================================================
+     LECTOR: texto directo sobre el fondo
+     ============================================================ */
+
+  .lib-reader {
+    min-height: 0;
+    padding: 4px 16px 0 0;
+
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-iron-dark, #444441) transparent;
+
+    /* El texto se desvanece al llegar al borde inferior. */
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 56px),
+      transparent
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      #000 calc(100% - 56px),
+      transparent
+    );
+  }
+
+  .lib-doc {
+    padding-bottom: 72px;
+
+    animation: lib-doc-enter 360ms ease both;
+  }
+
+  .lib-doc-title {
+    display: inline-block;
+
+    margin: 0;
+    padding-bottom: 6px;
+
+    border-bottom: 1px solid var(--color-gold-dark, #76633e);
+
+    color: var(--color-gold-light, #d0bc89);
+
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+  }
+
+  .lib-doc-kind {
+    margin: 10px 0 0;
+
+    color: var(--color-iron-light, #8a8780);
+
+    font-size: 9px;
+    letter-spacing: 0.25em;
+  }
+
+  .lib-text {
+    margin-top: 24px;
+  }
+
+  .lib-paragraph {
+    margin: 0 0 1.4em;
+  }
+
+  .lib-line {
+    display: block;
+
+    color: var(--color-parchment, #d9cbb4);
+
+    font-family: var(--lib-reading-font);
+    font-size: 14px;
+    line-height: 1.9;
+    white-space: pre-wrap;
+  }
+
+  /* ============================================================
+     ESTADO VACÍO
+     ============================================================ */
+
+  .lib-empty {
+    margin: 0;
+
+    color: var(--color-iron-light, #8a8780);
+
+    font-size: 12px;
+    letter-spacing: 0.08em;
+  }
+
+  .lib-empty-title,
+  .lib-empty-hint {
+    margin: 0;
+  }
+
+  .lib-empty-hint {
+    margin-top: 10px;
+
+    color: var(--color-ink-untyped, #696a66);
+
+    font-size: 11px;
+  }
+
+  /* ============================================================
+     PIE
+     ============================================================ */
+
+  .lib-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 28px;
+
+    padding: 14px 0 18px;
+
+    border-top: 1px solid rgba(190, 170, 137, 0.12);
+  }
+
+  .lib-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    padding: 0;
+
+    border: 0;
+    background: transparent;
+    color: var(--color-iron-light, #8a8780);
+
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-decoration: none;
+  }
+
+  button.lib-hint {
+    cursor: pointer;
+  }
+
+  .lib-hint--link:hover,
+  .lib-hint--link:focus-visible,
+  button.lib-hint:hover,
+  button.lib-hint:focus-visible {
+    color: var(--color-parchment-light, #ebe5d9);
+    outline: none;
+  }
+
+  .lib-hint kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+
+    border: 1px solid currentColor;
+
+    font: inherit;
+    font-size: 10px;
+  }
+
+  /* ============================================================
+     FOCO Y MOVIMIENTO
+     ============================================================ */
+
+  .lib-tab:focus-visible,
+  button.lib-row:focus-visible {
+    outline: 1px solid var(--color-gold, #b39a63);
+    outline-offset: -1px;
+  }
+
+  @keyframes lib-doc-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lib-doc {
+      animation: none;
+    }
+
+    .lib-page,
+    html[data-library-mode="walking"] .lib-page {
+      transition: none;
+    }
+  }
+
+  /* ============================================================
+     PANTALLAS ESTRECHAS
+     ============================================================ */
+
+  @media (max-width: 860px) {
+    .lib-page {
+      display: block;
+
+      height: auto;
+      min-height: 100vh;
+    }
+
+    .lib-page::before {
+      background: rgba(8, 8, 8, 0.88);
+    }
+
+    .lib-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .lib-tabs {
+      justify-content: flex-start;
+    }
+
+    .lib-body {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+
+    .lib-list {
+      max-height: 34vh;
+    }
+
+    .lib-reader {
+      max-height: none;
+
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+
+    .lib-footer {
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+  }
+</style>
