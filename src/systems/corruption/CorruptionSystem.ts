@@ -7,7 +7,23 @@ export type CorruptionStage =
   | 'IV'
   | 'V';
 
+/**
+ * Corrupción de la run.
+ *
+ * - Cada error suma +5.
+ * - Cada supervivencia suma según la etapa (5 / 5 / 10 / 10 / 15).
+ *
+ * Etapa 'I' = Stage 0: estado limpio, sin efectos.
+ * Etapa 'II' (a partir de 15, o sea con la primera bala) = Stage 1:
+ * empiezan la niebla y los efectos.
+ */
 export class CorruptionSystem {
+  static readonly ERROR_INCREASE = 5;
+
+  increaseAfterError(run: RunState): void {
+    run.corruption += CorruptionSystem.ERROR_INCREASE;
+  }
+
   increaseAfterSurvival(run: RunState): void {
     const stage = this.getStage(run);
 
@@ -47,7 +63,7 @@ export class CorruptionSystem {
       return 'III';
     }
 
-    if (run.corruption >= 10) {
+    if (run.corruption >= 15) {
       return 'II';
     }
 

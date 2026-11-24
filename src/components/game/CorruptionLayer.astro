@@ -1,0 +1,661 @@
+---
+/**
+ * CORRUPTION LAYER (paso 1)
+ *
+ * Capa visual de corrupción para Game.astro.
+ *
+ * - Humo oscuro en los bordes: mismo shader, crece con la etapa.
+ *     El centro (donde está el texto) queda siempre limpio.
+ * - Niebla: shader de ruido con Three.js (humo suave).
+ *     · Stage 0 (darkness 0): no hay niebla.
+ *     · Stage 1: casi imperceptible. Crece con --fx-darkness.
+ *     · Stages 3-4: a ráfagas, la niebla se espesa y cubre el texto
+ *       (parcialmente: se sigue pudiendo leer, pero cuesta).
+ *
+ * - Grano de película (paso 2): textura de ruido animada.
+ *     · Stages II-III: grano fino, sube suave hasta un tope.
+ *     · Stages IV-V: no crece más; sube y baja de intensidad entre el
+ *       mínimo y el tope, a intervalos irregulares (desconcierta).
+ *     No depende de la niebla. Sin WebGL: solo canvas 2D + CSS.
+ *
+ * - NO tiene lógica de juego. Solo lee variables CSS que publica
+ *   game.ts (publishCorruptionEffects): --fx-darkness, etc.
+ * - No captura el ratón (pointer-events: none).
+ * - Fuera de las ráfagas, la niebla es siempre sutil.
+ * - Si WebGL no está disponible, la niebla simplemente no aparece.
+ *
+ * Para ajustar el aspecto, toca el bloque :root de abajo.
+ */
+---
+
+<div class="corruption-layer" aria-hidden="true">
+  <div class="corruption-fog" id="corruption-fog"></div>
+  <div class="corruption-grain" id="corruption-grain"></div>
+</div>
+
+<script>
+  import * as THREE from "three";
+
+  /* ==========================================================
+   * AJUSTES DE LA NIEBLA
+   *
+   * La opacidad se ajusta en CSS (--corruption-fog-factor).
+   * ========================================================== */
+  const FOG = {
+    /** Color de la niebla (RGB 0-1). */
+    color: [0.62, 0.6, 0.56] as const,
+
+    /** Tamaño de las formas: más alto = nubes más pequeñas. */
+    scale: 2.4,
+
+    /** Velocidad de deriva (1 = normal, 0.5 = más lenta). */
+    speed: 1,
+
+    /** Resolución interna: la niebla es borrosa, con 0.5 sobra. */
+    resolution: 0.5,
+
+    /** Opacidad base = darkness × factor (se puede pisar en CSS). */
+    factor: 0.22,
+  };
+
+  /*
+   * HUMO OSCURO EN LOS BORDES: oscuridad que se arrastra desde las
+   * esquinas. El centro (donde está el texto) queda siempre limpio.
+   */
+  const EDGE = {
+    /** Opacidad máxima en los bordes (Stage 4). Se puede pisar en CSS. */
+    max: 0.95,
+
+    /** Darkness a partir de la cual empieza a aparecer. */
+    from: 0.10,
+  };
+
+  /*
+   * RÁFAGAS: la niebla se espesa un momento y tapa el texto.
+   * Solo ocurren cuando darkness >= minDarkness (Stages 3 y 4).
+   * Para desactivarlas del todo: document.documentElement.dataset
+   * .reduceEffects = "true" (pensado para un ajuste de accesibilidad).
+   */
+  const SURGE = {
+    /** Darkness mínima para que haya ráfagas (0.5 = Stage 3). */
+    minDarkness: 0.5,
+
+    /** Opacidad máxima de la ráfaga (se puede pisar en CSS). */
+    peak: 0.55,
+
+    /** Segundos entre ráfagas con darkness mínima y con la máxima. */
+    intervalAtMin: [14, 26] as const,
+    intervalAtMax: [8, 15] as const,
+
+    /** Subida (avisa al jugador), tiempo en máximo y bajada. */
+    attack: 0.7,
+    hold: [1.0, 1.8] as const,
+    release: 2.2,
+  };
+
+  const VERTEX = `
+    varying vec2 vUv;
+
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position.xy, 0.0, 1.0);
+    }
+  `;
+
+  const FRAGMENT = `
+varying vec2 vUv;
+uniform float uTime;
+uniform float uAspect;
+uniform float uOpacity;
+uniform float uSurge;
+uniform float uEdge;
+uniform float uScale;
+uniform vec3 uColor;
+
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    v += a * noise(p);
+    p = p * 2.02 + vec2(17.0, 9.0);
+    a *= 0.5;
+  }
+  return v;
+}
+
+void main() {
+  vec2 p = vec2(vUv.x * uAspect, vUv.y) * uScale;
+  float t = uTime * 0.025;
+
+  vec2 q = vec2(
+    fbm(p + vec2(t, -t * 0.6)),
+    fbm(p + vec2(5.2, 1.3) - vec2(t * 0.8, 0.0))
+  );
+
+  float n = fbm(p + 1.6 * q + vec2(t * 0.5, 0.0)) / 0.94;
+  float mist = smoothstep(0.40, 0.62, n);
+
+  // Un poco menos de niebla en el centro (zona del texto).
+  float d = distance(vUv, vec2(0.5));
+  float edge = mix(0.40, 1.0, smoothstep(0.12, 0.70, d));
+
+  // Ráfaga: la niebla se vuelve densa y cubre también el centro.
+  mist = max(mist, uSurge * (0.6 + 0.4 * n));
+  edge = mix(edge, 1.0, uSurge);
+
+  float fogAlpha = mist * edge * uOpacity;
+
+  // Humo oscuro que se arrastra desde los bordes (el centro queda limpio).
+  float n2 = fbm(p * 0.8 + vec2(-t * 0.7, t * 0.5) + vec2(31.0, 7.0));
+  float reach = smoothstep(0.28, 0.66, d + (n2 - 0.5) * 0.45);
+  float darkAlpha = reach * uEdge;
+
+  // La niebla queda ENCIMA del humo oscuro (el negro aporta alfa, no color).
+  float alpha = fogAlpha + darkAlpha * (1.0 - fogAlpha);
+  vec3 color = alpha > 0.0001 ? uColor * fogAlpha / alpha : vec3(0.0);
+
+  // Ruido mínimo para evitar bandas con alfa tan bajo.
+  alpha += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+
+  gl_FragColor = vec4(color, max(alpha, 0.0));
+}
+  `;
+
+  function cssNumber(value: string, fallback: number): number {
+    const parsed = parseFloat(value);
+
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function between(range: readonly [number, number], random: number): number {
+    return range[0] + (range[1] - range[0]) * random;
+  }
+
+  function smooth(t: number): number {
+    const x = Math.min(1, Math.max(0, t));
+
+    return x * x * (3 - 2 * x);
+  }
+
+  /*
+   * Controla cuándo ocurre una ráfaga y cuánta niebla extra hay.
+   * Devuelve un valor de 0 (nada) a 1 (ráfaga completa).
+   */
+  function createSurge(random: () => number = Math.random) {
+    let untilNext = -1;
+    let time = -1; // < 0: no hay ráfaga en curso
+    let hold = 1;
+
+    function nextInterval(darkness: number): number {
+      const t = Math.min(
+        1,
+        Math.max(
+          0,
+          (darkness - SURGE.minDarkness) / (0.85 - SURGE.minDarkness),
+        ),
+      );
+
+      const low = between(
+        [SURGE.intervalAtMin[0], SURGE.intervalAtMax[0]],
+        t,
+      );
+      const high = between(
+        [SURGE.intervalAtMin[1], SURGE.intervalAtMax[1]],
+        t,
+      );
+
+      return between([low, high], random());
+    }
+
+    return {
+      update(dt: number, darkness: number, allowed: boolean): number {
+        if (time >= 0) {
+          time += dt;
+
+          const { attack, release } = SURGE;
+          const total = attack + hold + release;
+
+          if (time >= total) {
+            time = -1;
+            untilNext = nextInterval(darkness);
+
+            return 0;
+          }
+
+          if (time < attack) {
+            return smooth(time / attack);
+          }
+
+          if (time < attack + hold) {
+            return 1;
+          }
+
+          return 1 - smooth((time - attack - hold) / release);
+        }
+
+        if (!allowed) {
+          untilNext = -1; // al bajar de etapa, la cuenta vuelve a empezar
+
+          return 0;
+        }
+
+        if (untilNext < 0) {
+          untilNext = nextInterval(darkness);
+        }
+
+        untilNext -= dt;
+
+        if (untilNext <= 0) {
+          time = 0;
+          hold = between(SURGE.hold, random());
+        }
+
+        return 0;
+      },
+    };
+  }
+
+  function initFog(container: HTMLElement): void {
+    const renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: false,
+      powerPreference: "low-power",
+    });
+
+    renderer.setClearColor(0x000000, 0);
+    renderer.setPixelRatio(FOG.resolution);
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+    const material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uAspect: { value: window.innerWidth / window.innerHeight },
+        uOpacity: { value: 0 },
+        uSurge: { value: 0 },
+        uEdge: { value: 0 },
+        uScale: { value: FOG.scale },
+        uColor: { value: new THREE.Vector3(...FOG.color) },
+      },
+      vertexShader: VERTEX,
+      fragmentShader: FRAGMENT,
+    });
+
+    scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    const root = document.documentElement;
+    const surge = createSurge();
+
+    let darkness = 0;
+    let factor = FOG.factor;
+    let peak = SURGE.peak;
+    let edgeMax = EDGE.max;
+
+    // Lee las variables que publica game.ts (y los ajustes de CSS).
+    function readCss(): void {
+      const style = getComputedStyle(root);
+
+      darkness = cssNumber(style.getPropertyValue("--fx-darkness"), 0);
+      factor = cssNumber(
+        style.getPropertyValue("--corruption-fog-factor"),
+        FOG.factor,
+      );
+      peak = cssNumber(
+        style.getPropertyValue("--corruption-surge-peak"),
+        SURGE.peak,
+      );
+      edgeMax = cssNumber(
+        style.getPropertyValue("--corruption-edge-max"),
+        EDGE.max,
+      );
+    }
+
+    function draw(surgeValue: number): void {
+      const base = darkness * factor;
+      const opacity = base + surgeValue * Math.max(0, peak - base);
+
+      // Humo oscuro: crece con la oscuridad (0 en Stage 0, máximo en Stage 4).
+      const edgeStrength =
+        Math.pow(
+          Math.min(1, Math.max(0, (darkness - EDGE.from) / (0.85 - EDGE.from))),
+          0.75,
+        ) * edgeMax;
+
+      // Stage 0: no hay nada, y tampoco se gasta GPU.
+      if (opacity < 0.003 && edgeStrength < 0.003) {
+        container.style.visibility = "hidden";
+
+        return;
+      }
+
+      container.style.visibility = "visible";
+
+      material.uniforms.uOpacity.value = opacity;
+      material.uniforms.uSurge.value = surgeValue;
+      material.uniforms.uEdge.value = edgeStrength;
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener("resize", () => {
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+      material.uniforms.uAspect.value = window.innerWidth / window.innerHeight;
+    });
+
+    // Con movimiento reducido: imagen fija, sin deriva ni ráfagas.
+    if (reduceMotion) {
+      material.uniforms.uTime.value = 40;
+
+      window.setInterval(() => {
+        readCss();
+        draw(0);
+      }, 400);
+
+      readCss();
+      draw(0);
+
+      return;
+    }
+
+    let last = performance.now();
+    let elapsed = 40; // empieza en una zona con formas visibles
+    let sinceCss = Infinity;
+
+    function animate(now: number): void {
+      requestAnimationFrame(animate);
+
+      const dt = Math.min((now - last) / 1000, 0.1);
+
+      last = now;
+
+      // Pestaña oculta: no se dibuja, no gasta.
+      if (document.hidden) {
+        return;
+      }
+
+      // Las variables CSS cambian poco: se leen 4 veces por segundo.
+      sinceCss += dt;
+
+      if (sinceCss >= 0.25) {
+        sinceCss = 0;
+        readCss();
+      }
+
+      const allowSurge =
+        darkness >= SURGE.minDarkness && root.dataset.reduceEffects !== "true";
+
+      elapsed += dt * FOG.speed;
+      material.uniforms.uTime.value = elapsed;
+
+      draw(surge.update(dt, darkness, allowSurge));
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  /* ============================================================
+     GRANO: un mosaico de ruido que "salta" de posición ~11 veces
+     por segundo. Opacidad = curva de --fx-darkness (0 en Stage 0).
+     ============================================================ */
+  const GRAIN = {
+    /** Opacidad tope (llega en Stage IV, darkness 0.5). Se puede pisar en CSS. */
+    max: 0.14,
+    /** Opacidad mínima de las oscilaciones en IV-V. Se puede pisar en CSS. */
+    min: 0.03,
+    /** Darkness a partir de la cual el grano oscila (inicio de Stage IV). */
+    wanderFrom: 0.5,
+    /** Segundos que tarda un cambio de intensidad. */
+    wanderMove: [1.2, 3.0] as const,
+    /** Segundos que se queda quieto antes del siguiente cambio. */
+    wanderHold: [0.4, 3.5] as const,
+    /** Lado del mosaico en px. */
+    tile: 192,
+    /** Milisegundos entre saltos. */
+    step: 90,
+  };
+
+  function initGrain(el: HTMLElement): void {
+    const canvas = document.createElement("canvas");
+
+    canvas.width = GRAIN.tile;
+    canvas.height = GRAIN.tile;
+
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      return;
+    }
+
+    const image = ctx.createImageData(GRAIN.tile, GRAIN.tile);
+
+    for (let i = 0; i < image.data.length; i += 4) {
+      // Gris centrado en 128: con "overlay" es neutro y solo da textura.
+      const v = 128 + (Math.random() + Math.random() - 1) * 120;
+
+      image.data[i] = v;
+      image.data[i + 1] = v;
+      image.data[i + 2] = v;
+      image.data[i + 3] = 255;
+    }
+
+    ctx.putImageData(image, 0, 0);
+    el.style.backgroundImage = `url(${canvas.toDataURL("image/png")})`;
+    el.style.backgroundSize = `${GRAIN.tile}px ${GRAIN.tile}px`;
+
+    const root = document.documentElement;
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    let baseOpacity = 0; // tope según la corrupción
+    let minOpacity = GRAIN.min;
+    let wanderOn = false;
+
+    // Oscilación: la intensidad va y viene (0 = mínimo, 1 = tope) con
+    // tiempos y destinos al azar, para que el jugador no la anticipe.
+    let level = 1;
+    let from = 1;
+    let to = 1;
+    let moveT = 1;
+    let moveDur = 1;
+    let hold = 0;
+
+    function apply(): void {
+      const low = Math.min(minOpacity, baseOpacity);
+      const opacity = wanderOn
+        ? low + (baseOpacity - low) * level
+        : baseOpacity;
+
+      el.style.opacity = String(opacity);
+      el.style.visibility = opacity < 0.004 ? "hidden" : "visible";
+    }
+
+    function update(): void {
+      const style = getComputedStyle(root);
+      const darkness = cssNumber(style.getPropertyValue("--fx-darkness"), 0);
+      const max = cssNumber(
+        style.getPropertyValue("--corruption-grain-max"),
+        GRAIN.max,
+      );
+
+      minOpacity = cssNumber(
+        style.getPropertyValue("--corruption-grain-min"),
+        GRAIN.min,
+      );
+
+      // Sube suave hasta el tope en II-III y no pasa de ahí.
+      baseOpacity = smooth((darkness - 0.1) / (GRAIN.wanderFrom - 0.1)) * max;
+
+      wanderOn =
+        darkness >= GRAIN.wanderFrom &&
+        !reduceMotion &&
+        root.dataset.reduceEffects !== "true";
+
+      if (!wanderOn) {
+        level = 1;
+        from = 1;
+        to = 1;
+        moveT = 1;
+        hold = 0;
+      }
+
+      apply();
+    }
+
+    function wander(dt: number): void {
+      if (!wanderOn) {
+        return;
+      }
+
+      if (hold > 0) {
+        hold -= dt;
+
+        return;
+      }
+
+      if (moveT >= 1) {
+        // Nuevo destino, a los extremos más a menudo que al medio.
+        from = level;
+        to = Math.random() < 0.5 ? Math.random() * 0.25 : 0.75 + Math.random() * 0.25;
+        moveDur = between(GRAIN.wanderMove, Math.random());
+        moveT = 0;
+      }
+
+      moveT = Math.min(1, moveT + dt / moveDur);
+      level = from + (to - from) * smooth(moveT);
+
+      if (moveT >= 1) {
+        hold = between(GRAIN.wanderHold, Math.random());
+      }
+
+      apply();
+    }
+
+    function jump(): void {
+      if (document.hidden || root.dataset.reduceEffects === "true") {
+        return;
+      }
+
+      const x = Math.floor(Math.random() * GRAIN.tile);
+      const y = Math.floor(Math.random() * GRAIN.tile);
+
+      el.style.backgroundPosition = `${x}px ${y}px`;
+      wander(GRAIN.step / 1000);
+    }
+
+    update();
+    window.setInterval(update, 250);
+
+    // Con movimiento reducido el grano queda fijo.
+    if (!reduceMotion) {
+      window.setInterval(jump, GRAIN.step);
+    }
+  }
+
+  const grainEl = document.getElementById("corruption-grain");
+
+  if (grainEl instanceof HTMLElement) {
+    initGrain(grainEl);
+  }
+
+  const fogContainer = document.getElementById("corruption-fog");
+
+  if (fogContainer instanceof HTMLElement) {
+    try {
+      initFog(fogContainer);
+    } catch (error) {
+      // Sin WebGL el juego sigue funcionando, solo sin niebla.
+      console.error("[Scribe] Corruption fog unavailable:", error);
+    }
+  }
+</script>
+
+<style is:global>
+  /* ============================================================
+     AJUSTES
+     ============================================================ */
+  :root {
+    /* Capa por encima del juego y por debajo de las pantallas de fin. */
+    --corruption-layer-z: 20;
+
+    /* Niebla: opacidad = --fx-darkness × este factor.
+       Stage 0 = nada, Stage 1 = casi imperceptible, Stage 4 ≈ 0.19.
+       Más alto = más niebla en todas las etapas. */
+    --corruption-fog-factor: 0.22;
+
+    /* Humo oscuro en los bordes: opacidad máxima (Stage 4).
+       0.5 suave, 0.9 casi negro en las esquinas. */
+    --corruption-edge-max: 0.95;
+
+    /* Ráfagas (Stages 3-4): opacidad máxima. 0.4 suave, 0.7 muy densa. */
+    --corruption-surge-peak: 0.55;
+
+    /* Grano: opacidad tope, que se alcanza al entrar en Stage IV.
+       0.08 casi nada, 0.25 marcado. */
+    --corruption-grain-max: 0.14;
+
+    /* Grano en Stages IV-V: sube y baja entre este mínimo y el tope. */
+    --corruption-grain-min: 0.03;
+  }
+
+  .corruption-layer {
+    position: fixed;
+    inset: 0;
+    z-index: var(--corruption-layer-z);
+
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  /* ============================================================
+     NIEBLA (la dibuja Three.js; crece con la etapa)
+     ============================================================ */
+  .corruption-grain {
+    position: absolute;
+    inset: -12px; /* margen para que el blur no deje bordes */
+
+    visibility: hidden; /* Stage 0: nada */
+    opacity: 0;
+    mix-blend-mode: overlay;
+  }
+
+  .corruption-fog {
+    position: absolute;
+    inset: 0;
+
+    /* La opacidad la controla el script (darkness y ráfagas). */
+    visibility: hidden;
+  }
+</style>

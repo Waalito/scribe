@@ -87,20 +87,13 @@ export function initializeGame(): void {
   /* ==========================================================
      DOM: UI ELEMENTS
   ========================================================== */
-  const documentTitle = document.getElementById("document-title");
   const documentContainer = document.getElementById("document-container");
-  const status = document.getElementById("run-status");
   const time = document.getElementById("run-time");
-  const currentLine = document.getElementById("current-line");
-  const characterProgress = document.getElementById("character-progress");
   const errors = document.getElementById("run-errors");
   const totalErrors = document.getElementById("run-total-errors");
-  const bullets = document.getElementById("run-bullets");
   const survived = document.getElementById("run-survived");
   const corruption = document.getElementById("run-corruption");
   const corruptionStage = document.getElementById("corruption-stage");
-  const lastAction = document.getElementById("last-action");
-  const message = document.getElementById("game-message");
   const deathScreen = document.getElementById("death-screen");
   const completionScreen = document.getElementById("completion-screen");
   const collectionCompleteScreen = document.getElementById(
@@ -112,21 +105,14 @@ export function initializeGame(): void {
 
 
 if (
-  !(documentTitle instanceof HTMLElement) ||
   !(documentContainer instanceof HTMLElement) ||
-  !(status instanceof HTMLElement) ||
   !(time instanceof HTMLElement) ||
-  !(currentLine instanceof HTMLElement) ||
-  !(characterProgress instanceof HTMLElement) ||
   !(errors instanceof HTMLElement) ||
   !(errorCounter instanceof HTMLElement) ||
   !(totalErrors instanceof HTMLElement) ||
-  !(bullets instanceof HTMLElement) ||
   !(survived instanceof HTMLElement) ||
   !(corruption instanceof HTMLElement) ||
   !(corruptionStage instanceof HTMLElement) ||
-  !(lastAction instanceof HTMLElement) ||
-  !(message instanceof HTMLElement) ||
   !(deathScreen instanceof HTMLElement) ||
   !(completionScreen instanceof HTMLElement) ||
   !(collectionCompleteScreen instanceof HTMLElement)
@@ -842,7 +828,6 @@ const hasChanged =
   function initializeDocument(documentData: DocumentContent): void {
     currentDocument = documentData;
     flatLines = flattenDocument(documentData);
-    documentTitle.textContent = documentData.metadata.title;
 
     /* --------------------------------------------------------
        RESET RENDER CACHE
@@ -994,34 +979,26 @@ function updateRollback(deltaTime: number): void {
   }
 }
 
+function formatTime(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.ceil(totalSeconds));
+
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
 
   /* ==========================================================
      UI
   ========================================================== */
   function updateUI(): void {
-    status.textContent = run.status.toUpperCase();
-    time.textContent = `${run.timeRemaining.toFixed(1)}s`;
+    time.textContent = formatTime(run.timeRemaining);
     errors.textContent = String(run.errors);
     syncErrorCounter();
     totalErrors.textContent = String(run.totalErrors);
-    bullets.textContent = String(run.bullets);
     survived.textContent = String(run.survivedCount);
     corruption.textContent = String(run.corruption);
     corruptionStage.textContent = String(coordinator.getCorruptionStage(run));
-
-    /* --------------------------------------------------------
-       CURRENT LINE
-    -------------------------------------------------------- */
-    const paragraph = run.document.paragraphs[run.currentParagraph];
-    const line = paragraph?.lines[run.currentLine];
-
-    if (line) {
-      currentLine.textContent = line.text;
-      characterProgress.textContent = `${run.characterIndex} / ${line.text.length}`;
-    } else {
-      currentLine.textContent = "—";
-      characterProgress.textContent = "0 / 0";
-    }
 
     /* --------------------------------------------------------
        DOCUMENT WINDOW
@@ -1030,14 +1007,6 @@ function updateRollback(deltaTime: number): void {
 
     updateEndScreens();
 
-    /* --------------------------------------------------------
-       TERMINAL STATES
-    -------------------------------------------------------- */
-    if (run.status === "dead") {
-      message.textContent = "HAS MUERTO.";
-    } else if (run.status === "completed") {
-      message.textContent = "DOCUMENTO COMPLETADO.";
-    }
   }
 
   /* ==========================================================
@@ -1045,8 +1014,6 @@ function updateRollback(deltaTime: number): void {
   ========================================================== */
 function restartRun(): void {
   if (isCollectionComplete()) {
-    message.textContent = "COLECCIÓN COMPLETA.";
-
     console.log("[Scribe] All documents have been preserved:", {
       totalDocuments: documents.length,
       preservedDocuments: documentLibrary.size,
@@ -1103,8 +1070,6 @@ game.focus();
     run = coordinator.createRun(currentDocument);
     resetRevolver();
     initializeDocument(currentDocument);
-    message.textContent = "Nueva run iniciada.";
-    lastAction.textContent = "new-run";
     updateUI();
 
     console.log("[Scribe] New run created:", run);
@@ -1164,7 +1129,6 @@ game.focus();
        PROCESS CHARACTER
     -------------------------------------------------------- */
     const action = coordinator.processCharacter(run, event.key);
-    lastAction.textContent = action;
 
 
 
@@ -1204,7 +1168,6 @@ switch (action) {
 
   triggerErrorImpact();
 
-  message.textContent = "ERROR.";
   break;
 }
 
@@ -1246,7 +1209,6 @@ switch (action) {
     errorCounterTimeout = null;
   }, ERROR_DISPLAY_DURATION);
 
-  message.textContent = "HAS SOBREVIVIDO.";
 
   spinRevolver("survived");
 
@@ -1269,7 +1231,6 @@ case "dead": {
     errorCounterTimeout = null;
   }, ERROR_DISPLAY_DURATION);
 
-  message.textContent = "HAS MUERTO.";
 
   spinRevolver("dead");
 
@@ -1285,8 +1246,6 @@ case "paragraph-complete": {
 
   typingAudio.playCheckpoint();
 
-  message.textContent =
-    "CHECKPOINT.";
 
   break;
 }
@@ -1374,8 +1333,6 @@ if (!initialDocument) {
     collectionComplete = true;
     showCollectionCompleteScreen = true;
 
-    message.textContent = "COLECCIÓN COMPLETA.";
-
     collectionCompleteScreen.classList.add("is-visible");
     collectionCompleteScreen.setAttribute(
       "aria-hidden",
@@ -1400,6 +1357,45 @@ run = coordinator.createRun(currentDocument);
   console.log("[Scribe] Selected document:", currentDocument.metadata.id);
   initializeDocument(currentDocument);
 
+  /* ============================================================
+   CORRUPTION → CSS VARIABLES
+============================================================ */
+let lastFxKey = "";
+let fxPreview: number | null = null;
+
+function publishCorruptionEffects(): void {
+  const fx =
+    fxPreview !== null
+      ? coordinator.getCorruptionEffects({ ...run, corruption: fxPreview })
+      : coordinator.getCorruptionTransitionState().current;
+
+  const key = JSON.stringify(fx);
+  if (key === lastFxKey) return;
+  lastFxKey = key;
+
+  const root = document.documentElement;
+  root.dataset.corruptionStage = fx.stage;
+
+  for (const [name, value] of Object.entries(fx)) {
+    if (typeof value !== "number") continue;
+
+    // darkness → --fx-darkness, anxietyIntensity → --fx-anxiety, etc.
+    const cssName = name
+      .replace(/Intensity$/, "")
+      .replace(/([A-Z])/g, (m) => `-${m.toLowerCase()}`);
+
+    root.style.setProperty(`--fx-${cssName}`, String(value));
+  }
+}
+
+// Solo en desarrollo: para ajustar sin tener que jugar.
+if (import.meta.env.DEV) {
+  (window as unknown as { __fx?: (n?: number) => void }).__fx = (n) => {
+    fxPreview = n ?? null;
+    publishCorruptionEffects();
+  };
+}
+
   /* ------------------------------------------------------------
      GAME LOOP
   ------------------------------------------------------------ */
@@ -1408,6 +1404,7 @@ run = coordinator.createRun(currentDocument);
   coordinator.update(run, deltaTime);
   updateRollback(deltaTime);
   updateUI();
+  publishCorruptionEffects();
 });
 
   /* ------------------------------------------------------------
@@ -1443,4 +1440,3 @@ game.focus();
 /* ============================================================
    AUTO INITIALIZATION
 ============================================================ */
-

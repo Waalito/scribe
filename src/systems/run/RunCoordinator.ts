@@ -282,6 +282,12 @@ export class RunCoordinator {
           ),
       });
 
+      this.corruptionSystem.increaseAfterError(run);
+
+      this.corruptionTransitionSystem.setTarget(
+      this.corruptionEffectsSystem.getEffects(run),
+);
+
       /*
        * --------------------------------------------------------
        * WEAPON CHECK
